@@ -1,3 +1,5 @@
+mod pad;
+
 pub type Block<const N: usize> = [u8; N];
 
 pub trait BlockCipher<const N: usize> {
@@ -6,31 +8,6 @@ pub trait BlockCipher<const N: usize> {
 
 pub trait BlockCipherMode<const N: usize> {
     fn encrypt_block<C: BlockCipher<N>>(&mut self, cipher: &C, block: Block<N>) -> Block<N>;
-}
-
-pub struct BitPadding<const N: usize>;
-
-impl<const N: usize> BitPadding<N> {
-    pub fn pad(&self, partial_block: &[u8]) -> Block<N> {
-        if partial_block.len() >= N {
-            panic!("input block must be shorter than N");
-        }
-
-        let mut new_block = [0; N];
-        new_block[..partial_block.len()].copy_from_slice(partial_block);
-        new_block[partial_block.len()] = 0x80;
-        new_block
-    }
-
-    pub fn unpad(&self, last_block: Block<N>) -> (Block<N>, usize) {
-        let len = last_block
-            .iter()
-            .rposition(|&b| b == 0x80)
-            .expect("missing marker byte (0x80)");
-        let mut block = last_block;
-        block[len..].fill(0);
-        (block, len)
-    }
 }
 
 pub struct BlockEncryption;
@@ -48,7 +25,7 @@ impl BlockEncryption {
         let blocks = plaintext.chunks_exact(N);
 
         let last_part = blocks.remainder();
-        let last_block = BitPadding.pad(last_part);
+        let last_block = pad::BitPadding.pad(last_part);
 
         for block in blocks {
             let block = <[u8; N]>::try_from(block).unwrap();
@@ -69,7 +46,7 @@ impl BlockEncryption {
 #[allow(clippy::identity_op)]
 #[allow(clippy::needless_range_loop)]
 mod tests {
-    use crate::{BitPadding, Block, BlockCipher, BlockCipherMode, BlockEncryption};
+    use crate::{Block, BlockCipher, BlockCipherMode, BlockEncryption};
 
     struct SimpleCipher;
     impl BlockCipher<4> for SimpleCipher {
@@ -131,50 +108,6 @@ mod tests {
 
         assert_eq!(output, expected_output);
         assert_eq!(mode.prev_output, output);
-    }
-
-    #[test]
-    fn pad_empty_block() {
-        assert_eq!(BitPadding.pad(&[]), [0x80, 0, 0, 0]);
-    }
-
-    #[test]
-    fn pad_partial_block() {
-        assert_eq!(BitPadding.pad(&[1, 2, 3]), [1, 2, 3, 0x80]);
-    }
-
-    #[test]
-    #[should_panic]
-    fn pad_full_block_should_panic() {
-        BitPadding::<4>.pad(&[1, 2, 3, 4]);
-    }
-
-    #[test]
-    #[should_panic]
-    fn pad_overfull_block_should_panic() {
-        BitPadding::<4>.pad(&[1, 2, 3, 4, 5]);
-    }
-
-    #[test]
-    fn unpad_empty_block() {
-        assert_eq!(BitPadding.unpad([0x80, 0, 0, 0]), ([0, 0, 0, 0], 0));
-    }
-
-    #[test]
-    fn unpad_partial_block() {
-        assert_eq!(BitPadding.unpad([1, 2, 3, 0x80]), ([1, 2, 3, 0], 3));
-    }
-
-    #[test]
-    #[should_panic]
-    fn unpad_empty_block_with_missing_end_marker() {
-        BitPadding::<4>.unpad([0, 0, 0, 0]);
-    }
-
-    #[test]
-    #[should_panic]
-    fn unpad_full_block_with_missing_end_marker() {
-        BitPadding::<4>.unpad([1, 2, 3, 4]);
     }
 
     #[test]
