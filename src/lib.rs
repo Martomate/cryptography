@@ -1,3 +1,4 @@
+pub mod aes;
 mod pad;
 
 pub type Block<const N: usize> = [u8; N];
