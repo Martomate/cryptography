@@ -44,27 +44,29 @@ impl AesKeyExpander {
         }
     }
 
-    pub fn expand_key<const K: usize, const Kdiv4: usize>(&self, key: Block<K>, rounds: usize) -> Vec<Block<16>> {
+    pub fn expand_key<const K: usize, const W: usize>(&self, key: Block<K>, num_keys: usize) -> Vec<Block<16>> {
         let key_words: Vec<Word> = key.chunks_exact(4).map(|bytes| Word(bytes.try_into().unwrap())).collect();
         let key_array = key_words.as_slice().try_into().unwrap();
 
-        let result = self.expand_key_using_words::<Kdiv4>(key_array, rounds);
+        let result = self.expand_key_using_words::<W>(key_array, num_keys);
         
-        let mut expanded_keys: Vec<Block<16>> = Vec::with_capacity(16 * rounds);
-        for (ki, words) in result.chunks(4).enumerate() {
+        let mut expanded_keys: Vec<Block<16>> = Vec::with_capacity(16 * num_keys);
+        for words in result.chunks(4) {
+            let mut block: Block<16> = Default::default();
             for wi in 0..4 {
                 for bi in 0..4 {
-                    expanded_keys[ki][wi * 4 + bi] = words[wi][bi];
+                    block[wi * 4 + bi] = words[wi][bi];
                 }
             }
+            expanded_keys.push(block);
         }
 
         expanded_keys
     }
 
-    pub fn expand_key_using_words<const N: usize>(&self, key: [Word; N], rounds: usize) -> Vec<Word> {
-        let mut w = Vec::with_capacity(16 * rounds);
-        for i in 0..(4 * rounds) {
+    pub fn expand_key_using_words<const N: usize>(&self, key: [Word; N], num_keys: usize) -> Vec<Word> {
+        let mut w = Vec::with_capacity(16 * num_keys);
+        for i in 0..(4 * num_keys) {
             let v = if i < N {
                 key[i]
             } else if i % N == 0 {

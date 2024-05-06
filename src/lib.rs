@@ -1,5 +1,5 @@
 pub mod aes;
-mod pad;
+pub mod pad;
 
 pub type Block<const N: usize> = [u8; N];
 
@@ -9,6 +9,14 @@ pub trait BlockCipher<const N: usize> {
 
 pub trait BlockCipherMode<const N: usize> {
     fn encrypt_block<C: BlockCipher<N>>(&mut self, cipher: &C, block: Block<N>) -> Block<N>;
+}
+
+pub struct EcbMode<const N: usize>;
+
+impl<const N: usize> BlockCipherMode<N> for EcbMode<N> {
+    fn encrypt_block<C: BlockCipher<N>>(&mut self, cipher: &C, block: Block<N>) -> Block<N> {
+        cipher.encrypt(block)
+    }
 }
 
 pub struct BlockEncryption;
@@ -26,7 +34,7 @@ impl BlockEncryption {
         let blocks = plaintext.chunks_exact(N);
 
         let last_part = blocks.remainder();
-        let last_block = pad::BitPadding.pad(last_part);
+        let last_block = pad::PkcsPadding.pad(last_part);
 
         for block in blocks {
             let block = <[u8; N]>::try_from(block).unwrap();
@@ -114,25 +122,34 @@ mod tests {
     #[test]
     fn encrypting_misaligned_data_adds_padding() {
         let mut result = Vec::new();
-        BlockEncryption::encrypt(NoopCipher::<4>, PassthroughMode::<4>, &[1, 2], |b| result.push(b));
+        BlockEncryption::encrypt(NoopCipher::<4>, PassthroughMode::<4>, &[1, 2], |b| {
+            result.push(b)
+        });
 
-        assert_eq!(&result, &[1, 2, 0x80, 0])
+        assert_eq!(&result, &[1, 2, 2, 2])
     }
-    
+
     #[test]
     fn encrypting_aligned_data_adds_padding() {
         let mut result = Vec::new();
-        BlockEncryption::encrypt(NoopCipher::<4>, PassthroughMode::<4>, &[1, 2, 4, 3], |b| result.push(b));
+        BlockEncryption::encrypt(NoopCipher::<4>, PassthroughMode::<4>, &[1, 2, 4, 3], |b| {
+            result.push(b)
+        });
 
-        assert_eq!(&result, &[1, 2, 4, 3, 0x80, 0, 0, 0])
+        assert_eq!(&result, &[1, 2, 4, 3, 4, 4, 4, 4])
     }
 
     #[test]
     fn encrypting_using_block_cipher() {
         let mut result = Vec::new();
-        BlockEncryption::encrypt(SimpleCipher, PassthroughMode::<4>, &[1, 2, 4, 3, 7, 8], |b| result.push(b));
+        BlockEncryption::encrypt(
+            SimpleCipher,
+            PassthroughMode::<4>,
+            &[1, 2, 4, 3, 7, 8],
+            |b| result.push(b),
+        );
 
-        assert_eq!(&result, &[3, 4, 2, 1, 0, 0x80, 8, 7])
+        assert_eq!(&result, &[3, 4, 2, 1, 2, 2, 8, 7])
     }
 
     #[test]
@@ -141,22 +158,18 @@ mod tests {
 
         let plaintext = [1, 2, 4, 3, 7, 8];
         let plain1 = [1, 2, 4, 3];
-        let plain2_padded = [7, 8, 0x80, 0];
+        let plain2_padded = [7, 8, 2, 2];
 
         let cipher = NoopCipher::<4>;
-        let mode = SimpleCipherMode {
-            prev_output: iv,
-        };
-        
+        let mode = SimpleCipherMode { prev_output: iv };
+
         let mut result = Vec::new();
         BlockEncryption::encrypt(cipher, mode, &plaintext, |b| result.push(b));
 
         let mut expected_output = Vec::with_capacity(8);
         {
             let cipher = NoopCipher::<4>;
-            let mut mode = SimpleCipherMode {
-                prev_output: iv,
-            };
+            let mut mode = SimpleCipherMode { prev_output: iv };
             expected_output.extend(&mode.encrypt_block(&cipher, plain1));
             expected_output.extend(&mode.encrypt_block(&cipher, plain2_padded));
         }
