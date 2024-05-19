@@ -1,6 +1,10 @@
 use crate::{Block, BlockCipher};
 
-use self::{expander::AesKeyExpander, field::AesField, sbox::Sbox};
+use self::{
+    expander::AesKeyExpander,
+    field::AesField,
+    sbox::SBOX,
+};
 
 mod expander;
 mod field;
@@ -15,9 +19,9 @@ impl State {
         }
     }
 
-    fn substitute(&mut self, sbox: &Sbox) {
+    fn substitute(&mut self) {
         for b in self.0.iter_mut() {
-            *b = sbox[*b];
+            *b = SBOX[*b];
         }
     }
 
@@ -68,7 +72,6 @@ impl State {
 pub struct AES {
     keys: Vec<Block<16>>,
     rounds: usize,
-    sbox: Sbox,
 }
 
 impl AES {
@@ -76,33 +79,21 @@ impl AES {
         let expander = AesKeyExpander::new();
         let keys = expander.expand_key::<16, 4>(key, 11);
 
-        AES {
-            keys,
-            rounds: 10,
-            sbox: Sbox::calculate(),
-        }
+        AES { keys, rounds: 10 }
     }
 
     pub fn with_192_bit_key(key: Block<24>) -> AES {
         let expander = AesKeyExpander::new();
         let keys = expander.expand_key::<24, 6>(key, 13);
 
-        AES {
-            keys,
-            rounds: 12,
-            sbox: Sbox::calculate(),
-        }
+        AES { keys, rounds: 12 }
     }
 
     pub fn with_256_bit_key(key: Block<32>) -> AES {
         let expander = AesKeyExpander::new();
         let keys = expander.expand_key::<32, 8>(key, 15);
 
-        AES {
-            keys,
-            rounds: 14,
-            sbox: Sbox::calculate(),
-        }
+        AES { keys, rounds: 14 }
     }
 }
 
@@ -113,13 +104,13 @@ impl BlockCipher<16> for AES {
         state.add_key(&self.keys[0]);
 
         for k in 1..self.rounds {
-            state.substitute(&self.sbox);
+            state.substitute();
             state.shift_rows();
             state.mix_columns();
             state.add_key(&self.keys[k]);
         }
 
-        state.substitute(&self.sbox);
+        state.substitute();
         state.shift_rows();
         // Note: mix_columns should not be called here
         state.add_key(&self.keys[self.rounds]);

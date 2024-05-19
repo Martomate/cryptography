@@ -1,15 +1,15 @@
 pub struct AesField;
 
 impl AesField {
-    pub fn mul2(n: u8) -> u8 {
+    pub const fn mul2(n: u8) -> u8 {
         (n << 1) ^ (if n & 0x80 != 0 { 0x1b } else { 0 })
     }
 
-    pub fn mul3(n: u8) -> u8 {
+    pub const fn mul3(n: u8) -> u8 {
         n ^ (n << 1) ^ (if n & 0x80 != 0 { 0x1b } else { 0 })
     }
 
-    pub fn div3(mut n: u8) -> u8 {
+    pub const fn div3(mut n: u8) -> u8 {
         n ^= n << 1;
         n ^= n << 2;
         n ^= n << 4;
@@ -24,35 +24,48 @@ impl IntoIterator for AesField {
     type IntoIter = AesFieldIterator;
 
     fn into_iter(self) -> Self::IntoIter {
-        AesFieldIterator { p: 1, q: 1 }
+        AesFieldIterator::start()
     }
 }
 
 pub struct AesFieldIterator {
-    p: u8,
-    q: u8, // inverse of p
+    pub p: u8,
+    pub q: u8, // inverse of p
+}
+
+impl AesFieldIterator {
+    pub const fn start() -> Self {
+        Self { p: 1, q: 1 }
+    }
+
+    pub const fn step(&self) -> Option<((u8, u8), (u8, u8))> {
+        if self.p == 0 {
+            // we're back at the start of the cycle
+            return None;
+        }
+
+        let mut np = AesField::mul3(self.p);
+        let nq = AesField::div3(self.q);
+
+        if np == 1 {
+            np = 0; // stop loop on next call
+        }
+
+        Some(((self.p, self.q), (np, nq)))
+    }
 }
 
 impl Iterator for AesFieldIterator {
     type Item = (u8, u8);
 
     fn next(&mut self) -> Option<Self::Item> {
-        if self.p == 0 {
-            // we're back at the start of the cycle
-            return None;
+        if let Some(((n, inv), (np, nq))) = self.step() {
+            self.p = np;
+            self.q = nq;
+            Some((n, inv))
+        } else {
+            None
         }
-
-        let n = self.p;
-        let inv = self.q;
-
-        self.p = AesField::mul3(self.p);
-        self.q = AesField::div3(self.q);
-
-        if self.p == 1 {
-            self.p = 0; // stop loop on next call
-        }
-
-        Some((n, inv))
     }
 }
 

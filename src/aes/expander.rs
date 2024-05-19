@@ -2,7 +2,10 @@ use std::ops::{BitXor, Deref, DerefMut};
 
 use crate::Block;
 
-use super::{field::AesField, sbox::Sbox};
+use super::{
+    field::AesField,
+    sbox::{Sbox, SBOX},
+};
 
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
 pub struct Word(Block<4>);
@@ -37,19 +40,32 @@ pub struct AesKeyExpander {
 }
 
 impl AesKeyExpander {
-    pub fn new() -> AesKeyExpander {
-        AesKeyExpander {
-            sbox: Sbox::calculate(),
-            rcon: Self::calculate_round_constants().map(|rc| Word([rc, 0, 0, 0])),
+    pub const fn new() -> AesKeyExpander {
+        const RC: [u8; 11] = AesKeyExpander::calculate_round_constants();
+
+        let mut rcon: [Word; 11] = [Word([0; 4]); 11];
+        let mut i = 0;
+        while i < 11 {
+            rcon[i] = Word([RC[i], 0, 0, 0]);
+            i += 1;
         }
+
+        AesKeyExpander { sbox: SBOX, rcon }
     }
 
-    pub fn expand_key<const K: usize, const W: usize>(&self, key: Block<K>, num_keys: usize) -> Vec<Block<16>> {
-        let key_words: Vec<Word> = key.chunks_exact(4).map(|bytes| Word(bytes.try_into().unwrap())).collect();
+    pub fn expand_key<const K: usize, const W: usize>(
+        &self,
+        key: Block<K>,
+        num_keys: usize,
+    ) -> Vec<Block<16>> {
+        let key_words: Vec<Word> = key
+            .chunks_exact(4)
+            .map(|bytes| Word(bytes.try_into().unwrap()))
+            .collect();
         let key_array = key_words.as_slice().try_into().unwrap();
 
         let result = self.expand_key_using_words::<W>(key_array, num_keys);
-        
+
         let mut expanded_keys: Vec<Block<16>> = Vec::with_capacity(16 * num_keys);
         for words in result.chunks(4) {
             let mut block: Block<16> = Default::default();
@@ -64,7 +80,11 @@ impl AesKeyExpander {
         expanded_keys
     }
 
-    pub fn expand_key_using_words<const N: usize>(&self, key: [Word; N], num_keys: usize) -> Vec<Word> {
+    pub fn expand_key_using_words<const N: usize>(
+        &self,
+        key: [Word; N],
+        num_keys: usize,
+    ) -> Vec<Word> {
         let mut w = Vec::with_capacity(16 * num_keys);
         for i in 0..(4 * num_keys) {
             let v = if i < N {
@@ -82,13 +102,15 @@ impl AesKeyExpander {
         w
     }
 
-    fn calculate_round_constants<const L: usize>() -> [u8; L] {
+    const fn calculate_round_constants<const L: usize>() -> [u8; L] {
         let mut result = [0; L];
 
         let mut n = 1;
-        for r in result[1..].iter_mut() {
-            *r = n;
+        let mut i = 1;
+        while i < L {
+            result[i] = n;
             n = AesField::mul2(n);
+            i += 1;
         }
 
         result
@@ -116,7 +138,7 @@ impl Default for AesKeyExpander {
 
 #[cfg(test)]
 mod tests {
-    use crate::aes::sbox::Sbox;
+    use crate::aes::sbox::SBOX;
 
     use super::{AesKeyExpander, Word};
 
@@ -137,7 +159,7 @@ mod tests {
         let expander = AesKeyExpander::new();
         let actual = expander.substitute_word(Word([1, 2, 3, 4]));
 
-        let sbox = Sbox::calculate();
+        let sbox = SBOX;
         let expected = Word([sbox[1], sbox[2], sbox[3], sbox[4]]);
 
         assert_eq!(actual, expected);
@@ -153,7 +175,7 @@ mod tests {
 
     #[test]
     fn expand_key() {
-        let expander = AesKeyExpander::new();
+        let expander: AesKeyExpander = AesKeyExpander::new();
         let key = make_key::<6>(|i, j| 10 * i + j);
         let exp = expander.expand_key_using_words(key, 5);
 
@@ -167,7 +189,7 @@ mod tests {
 
         // the following bytes should NOT come from the key
         for i in 6..12 {
-            assert_ne!(exp[i], key[i-6]);
+            assert_ne!(exp[i], key[i - 6]);
         }
 
         // they should also not be zero
