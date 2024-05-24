@@ -5,10 +5,14 @@ pub type Block<const N: usize> = [u8; N];
 
 pub trait BlockCipher<const N: usize> {
     fn encrypt(&self, plaintext: Block<N>) -> Block<N>;
+
+    fn decrypt(&self, ciphertext: Block<N>) -> Block<N>;
 }
 
 pub trait BlockCipherMode<const N: usize> {
     fn encrypt_block<C: BlockCipher<N>>(&mut self, cipher: &C, block: Block<N>) -> Block<N>;
+
+    fn decrypt_block<C: BlockCipher<N>>(&mut self, cipher: &C, block: Block<N>) -> Block<N>;
 }
 
 pub struct EcbMode<const N: usize>;
@@ -16,6 +20,10 @@ pub struct EcbMode<const N: usize>;
 impl<const N: usize> BlockCipherMode<N> for EcbMode<N> {
     fn encrypt_block<C: BlockCipher<N>>(&mut self, cipher: &C, block: Block<N>) -> Block<N> {
         cipher.encrypt(block)
+    }
+
+    fn decrypt_block<C: BlockCipher<N>>(&mut self, cipher: &C, block: Block<N>) -> Block<N> {
+        cipher.decrypt(block)
     }
 }
 
@@ -49,6 +57,42 @@ impl BlockEncryption {
             output(b);
         }
     }
+
+    pub fn decrypt<C, M, const N: usize>(
+        cipher: C,
+        mut mode: M,
+        ciphertext: &[u8],
+        mut output: impl FnMut(u8),
+    ) where
+        C: BlockCipher<N>,
+        M: BlockCipherMode<N>,
+    {
+        let blocks = ciphertext.chunks_exact(N);
+
+        if !blocks.remainder().is_empty() {
+            panic!("ciphertext must be divisible into 128 bit blocks");
+        }
+
+        let mut next_output = None;
+        for block in blocks {
+            let block = <[u8; N]>::try_from(block).unwrap();
+            let output_block = mode.decrypt_block(&cipher, block);
+            if let Some(output_block) = next_output {
+                for b in output_block {
+                    output(b);
+                }
+            }
+            next_output = Some(output_block);
+        }
+
+        let next_output = next_output.unwrap();
+        dbg!(next_output);
+        let last_block_len = pad::PkcsPadding.unpad(next_output);
+
+        for &b in &next_output[..last_block_len] {
+            output(b);
+        }
+    }
 }
 
 #[cfg(test)]
@@ -64,6 +108,12 @@ mod tests {
             ciphertext.reverse();
             ciphertext
         }
+
+        fn decrypt(&self, ciphertext: Block<4>) -> Block<4> {
+            let mut plaintext = ciphertext;
+            plaintext.reverse();
+            plaintext
+        }
     }
 
     struct NoopCipher<const N: usize>;
@@ -71,6 +121,10 @@ mod tests {
     impl<const N: usize> BlockCipher<N> for NoopCipher<N> {
         fn encrypt(&self, plaintext: Block<N>) -> Block<N> {
             plaintext
+        }
+
+        fn decrypt(&self, ciphertext: Block<N>) -> Block<N> {
+            ciphertext
         }
     }
 
@@ -90,6 +144,19 @@ mod tests {
 
             output
         }
+
+        fn decrypt_block<C: BlockCipher<N>>(&mut self, cipher: &C, block: Block<N>) -> Block<N> {
+            let output = block;
+
+            self.prev_output = output;
+            let mut input = cipher.decrypt(output);
+
+            for i in 0..N {
+                input[i] ^= self.prev_output[i];
+            }
+
+            input
+        }
     }
 
     struct PassthroughMode<const N: usize>;
@@ -97,6 +164,10 @@ mod tests {
     impl<const N: usize> BlockCipherMode<N> for PassthroughMode<N> {
         fn encrypt_block<C: BlockCipher<N>>(&mut self, cipher: &C, block: Block<N>) -> Block<N> {
             cipher.encrypt(block)
+        }
+
+        fn decrypt_block<C: BlockCipher<N>>(&mut self, cipher: &C, block: Block<N>) -> Block<N> {
+            cipher.decrypt(block)
         }
     }
 

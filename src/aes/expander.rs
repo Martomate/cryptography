@@ -122,10 +122,10 @@ impl AesKeyExpander {
 
     fn substitute_word(&self, w: Word) -> Word {
         Word([
-            self.sbox[w[0]],
-            self.sbox[w[1]],
-            self.sbox[w[2]],
-            self.sbox[w[3]],
+            self.sbox.forward[w[0] as usize],
+            self.sbox.forward[w[1] as usize],
+            self.sbox.forward[w[2] as usize],
+            self.sbox.forward[w[3] as usize],
         ])
     }
 }
@@ -159,7 +159,7 @@ mod tests {
         let expander = AesKeyExpander::new();
         let actual = expander.substitute_word(Word([1, 2, 3, 4]));
 
-        let sbox = SBOX;
+        let sbox = SBOX.forward;
         let expected = Word([sbox[1], sbox[2], sbox[3], sbox[4]]);
 
         assert_eq!(actual, expected);

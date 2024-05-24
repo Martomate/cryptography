@@ -41,6 +41,14 @@ impl<const N: usize> PkcsPadding<N> {
         }
         new_block
     }
+
+    pub fn unpad(&self, block: Block<N>) -> usize {
+        let amt = block[N-1];
+        if amt as usize > N {
+            panic!("padding byte is too big");
+        }
+        N - amt as usize
+    }
 }
 
 #[cfg(test)]
@@ -116,6 +124,22 @@ mod tests {
         #[should_panic]
         fn pad_overfull_block_should_panic() {
             PkcsPadding::<4>.pad(&[1, 2, 3, 4, 5]);
+        }
+
+        #[test]
+        fn unpad_empty_block() {
+            assert_eq!(PkcsPadding.unpad([4, 4, 4, 4]), 0);
+        }
+
+        #[test]
+        fn unpad_partial_block() {
+            assert_eq!(PkcsPadding.unpad([1, 2, 3, 1]), 3);
+        }
+
+        #[test]
+        #[should_panic]
+        fn unpad_block_with_too_high_values_should_panic() {
+            PkcsPadding::<4>.unpad([5, 5, 5, 5]);
         }
     }
 }

@@ -16,6 +16,28 @@ impl AesField {
         n ^= if n & 0x80 != 0 { 0x09 } else { 0 };
         n
     }
+
+    pub const fn mul(mut a: u8, mut b: u8) -> u8 {
+        let mut r = 0;
+
+        let mut i = 0;
+        while i < 8 {
+            if (b & 1) != 0 {
+                r ^= a;
+            }
+
+            let hi = (a & 0x80) != 0;
+            a <<= 1;
+            if hi {
+                a ^= 0x1b;
+            }
+            b >>= 1;
+
+            i += 1;
+        }
+
+        r
+    }
 }
 
 impl IntoIterator for AesField {
@@ -81,6 +103,34 @@ mod tests {
             assert_eq!(AesField::mul3(AesField::div3(n)), n);
             assert_eq!(AesField::div3(AesField::mul3(n)), n);
         }
+    }
+
+    #[test]
+    fn mul_is_correct() {
+        let r3x3 = AesField::mul3(3);
+        let r3x3x3 = AesField::mul3(r3x3);
+        let r3x3x3x3 = AesField::mul3(r3x3x3);
+
+        let r3x5 = AesField::mul3(5);
+        let r3x3x5 = AesField::mul3(r3x5);
+        let r3x3x3x5 = AesField::mul3(r3x3x5);
+        let r3x3x3x3x5 = AesField::mul3(r3x3x3x5);
+
+        assert_eq!(AesField::mul(5, 2), AesField::mul2(5));
+        assert_eq!(AesField::mul(5, 3), r3x5);
+        assert_eq!(AesField::mul(5, r3x3), r3x3x5);
+        assert_eq!(AesField::mul(5, r3x3x3), r3x3x3x5);
+        assert_eq!(AesField::mul(5, r3x3x3x3), r3x3x3x3x5);
+    }
+
+    #[test]
+    fn mul_supports_large_inputs() {
+        assert_eq!(AesField::mul(3, AesField::div3(1)), 1);
+        assert_eq!(AesField::mul(AesField::div3(1), 3), 1);
+        assert_eq!(AesField::mul(
+            AesField::mul(AesField::div3(1), AesField::div3(1)),
+            AesField::mul(AesField::mul3(1), AesField::mul3(1)),
+        ), 1);
     }
 
     #[test]
