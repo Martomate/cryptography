@@ -86,7 +86,6 @@ impl BlockEncryption {
         }
 
         let next_output = next_output.unwrap();
-        dbg!(next_output);
         let last_block_len = pad::PkcsPadding.unpad(next_output);
 
         for &b in &next_output[..last_block_len] {
