@@ -1,4 +1,5 @@
 pub mod aes;
+pub mod sha;
 pub mod pad;
 
 pub type Block<const N: usize> = [u8; N];

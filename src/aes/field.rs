@@ -127,10 +127,13 @@ mod tests {
     fn mul_supports_large_inputs() {
         assert_eq!(AesField::mul(3, AesField::div3(1)), 1);
         assert_eq!(AesField::mul(AesField::div3(1), 3), 1);
-        assert_eq!(AesField::mul(
-            AesField::mul(AesField::div3(1), AesField::div3(1)),
-            AesField::mul(AesField::mul3(1), AesField::mul3(1)),
-        ), 1);
+        assert_eq!(
+            AesField::mul(
+                AesField::mul(AesField::div3(1), AesField::div3(1)),
+                AesField::mul(AesField::mul3(1), AesField::mul3(1)),
+            ),
+            1
+        );
     }
 
     #[test]
