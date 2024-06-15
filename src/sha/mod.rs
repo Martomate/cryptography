@@ -1,5 +1,7 @@
 use std::fmt::{Debug, Display};
 
+use hex::FromHex;
+
 mod pad;
 
 #[derive(PartialEq, Eq, Clone)]
@@ -14,6 +16,22 @@ impl Display for Hash160 {
 impl Debug for Hash160 {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{:x}_{:x}_{:x}_{:x}_{:x}", self.0[0], self.0[1], self.0[2], self.0[3], self.0[4])
+    }
+}
+
+impl FromHex for Hash160 {
+    type Error = hex::FromHexError;
+
+    fn from_hex<T: AsRef<[u8]>>(hex: T) -> Result<Self, Self::Error> {
+        let bytes = <[u8; 20]>::from_hex(hex)?;
+
+        let mut words = [0; 5];
+        for (i, chunk) in bytes.chunks_exact(4).enumerate() {
+            let chunk = <[u8; 4]>::try_from(chunk).unwrap();
+            words[i] = u32::from_be_bytes(chunk);
+        }
+
+        Ok(Hash160(words))
     }
 }
 
