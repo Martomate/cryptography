@@ -1,8 +1,33 @@
 use crate::Block;
 
-use super::{pad::sha1_padding, Hash256};
+use super::{
+    hash::{Hash224, Hash256},
+    pad::sha1_padding,
+};
 
-pub fn sha2(message: &[u8]) -> Hash256 {
+pub fn sha224(message: &[u8]) -> Hash224 {
+    let chunks = message.chunks_exact(64);
+    let remaining_bytes = chunks.remainder();
+    let (last_chunk, extra_chunk) = sha2_padding(remaining_bytes, message.len() as u64);
+
+    let mut hash = [
+        0xc1059ed8, 0x367cd507, 0x3070dd17, 0xf70e5939, //
+        0xffc00b31, 0x68581511, 0x64f98fa7, 0xbefa4fa4,
+    ];
+
+    for chunk in chunks {
+        let chunk = <[u8; 64]>::try_from(chunk).unwrap();
+        process_chunk(&mut hash, chunk);
+    }
+    process_chunk(&mut hash, last_chunk);
+    if let Some(extra_chunk) = extra_chunk {
+        process_chunk(&mut hash, extra_chunk);
+    }
+
+    <[u32; 7]>::try_from(&hash[..7]).unwrap().into()
+}
+
+pub fn sha256(message: &[u8]) -> Hash256 {
     let chunks = message.chunks_exact(64);
     let remaining_bytes = chunks.remainder();
     let (last_chunk, extra_chunk) = sha2_padding(remaining_bytes, message.len() as u64);
