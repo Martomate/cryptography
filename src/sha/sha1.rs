@@ -1,4 +1,17 @@
+use crate::HashFunction;
+
 use super::{hash::Hash160, pad::sha1_padding};
+
+#[derive(Clone)]
+pub struct Sha1;
+
+impl HashFunction for Sha1 {
+    type Output = Hash160;
+
+    fn hash(&self, message: &[u8]) -> Self::Output {
+        sha1(message)
+    }
+}
 
 fn process_chunk(hash: &mut [u32; 5], chunk: [u8; 64]) {
     let mut w = [0_u32; 80];

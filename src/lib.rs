@@ -1,6 +1,13 @@
 pub mod aes;
+pub mod rsa;
 pub mod sha;
 pub mod pad;
+
+trait HashFunction: Clone {
+    type Output;
+
+    fn hash(&self, message: &[u8]) -> Self::Output;
+}
 
 pub type Block<const N: usize> = [u8; N];
 

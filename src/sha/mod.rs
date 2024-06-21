@@ -4,9 +4,11 @@ mod sha1;
 mod sha2;
 
 pub use sha1::sha1;
+pub use sha1::Sha1;
 
 pub use sha2::sha224;
 pub use sha2::sha256;
+pub use sha2::Sha256;
 pub use sha2::sha384;
 pub use sha2::sha512;
 

@@ -1,49 +1,43 @@
 use hex::FromHex;
 
 #[derive(Debug, PartialEq, Eq, Clone)]
-pub struct Hash160([u8; 20]);
+pub struct HashValue<const N: usize>([u8; N]);
 
-#[derive(Debug, PartialEq, Eq, Clone)]
-pub struct Hash224([u8; 28]);
-
-#[derive(Debug, PartialEq, Eq, Clone)]
-pub struct Hash256([u8; 32]);
-
-#[derive(Debug, PartialEq, Eq, Clone)]
-pub struct Hash384([u8; 48]);
-
-#[derive(Debug, PartialEq, Eq, Clone)]
-pub struct Hash512([u8; 64]);
+pub type Hash160 = HashValue<20>;
+pub type Hash224 = HashValue<28>;
+pub type Hash256 = HashValue<32>;
+pub type Hash384 = HashValue<48>;
+pub type Hash512 = HashValue<64>;
 
 // From words
 
 impl From<[u32; 5]> for Hash160 {
     fn from(words: [u32; 5]) -> Self {
-        Hash160(u32s_to_bytes(words))
+        HashValue(u32s_to_bytes(words))
     }
 }
 
 impl From<[u32; 7]> for Hash224 {
     fn from(words: [u32; 7]) -> Self {
-        Hash224(u32s_to_bytes(words))
+        HashValue(u32s_to_bytes(words))
     }
 }
 
 impl From<[u32; 8]> for Hash256 {
     fn from(words: [u32; 8]) -> Self {
-        Hash256(u32s_to_bytes(words))
+        HashValue(u32s_to_bytes(words))
     }
 }
 
 impl From<[u64; 6]> for Hash384 {
     fn from(words: [u64; 6]) -> Self {
-        Hash384(u64s_to_bytes(words))
+        HashValue(u64s_to_bytes(words))
     }
 }
 
 impl From<[u64; 8]> for Hash512 {
     fn from(words: [u64; 8]) -> Self {
-        Hash512(u64s_to_bytes(words))
+        HashValue(u64s_to_bytes(words))
     }
 }
 
@@ -79,45 +73,25 @@ impl From<Hash512> for [u64; 8] {
     }
 }
 
+// To bytes
+
+impl<const N: usize> From<HashValue<N>> for [u8; N] {
+    fn from(value: HashValue<N>) -> Self {
+        value.0
+    }
+}
+
 // From hex
 
-impl FromHex for Hash160 {
+impl<const N: usize> FromHex for HashValue<N> {
     type Error = hex::FromHexError;
 
     fn from_hex<T: AsRef<[u8]>>(hex: T) -> Result<Self, Self::Error> {
-        <[u8; 20]>::from_hex(hex).map(Hash160)
-    }
-}
-
-impl FromHex for Hash224 {
-    type Error = hex::FromHexError;
-
-    fn from_hex<T: AsRef<[u8]>>(hex: T) -> Result<Self, Self::Error> {
-        <[u8; 28]>::from_hex(hex).map(Hash224)
-    }
-}
-
-impl FromHex for Hash256 {
-    type Error = hex::FromHexError;
-
-    fn from_hex<T: AsRef<[u8]>>(hex: T) -> Result<Self, Self::Error> {
-        <[u8; 32]>::from_hex(hex).map(Hash256)
-    }
-}
-
-impl FromHex for Hash384 {
-    type Error = hex::FromHexError;
-
-    fn from_hex<T: AsRef<[u8]>>(hex: T) -> Result<Self, Self::Error> {
-        <[u8; 48]>::from_hex(hex).map(Hash384)
-    }
-}
-
-impl FromHex for Hash512 {
-    type Error = hex::FromHexError;
-
-    fn from_hex<T: AsRef<[u8]>>(hex: T) -> Result<Self, Self::Error> {
-        <[u8; 64]>::from_hex(hex).map(Hash512)
+        let bytes = Vec::<u8>::from_hex(hex)?;
+        if bytes.len() != N {
+            return Err(hex::FromHexError::InvalidStringLength);
+        }
+        Ok(HashValue(<[u8; N]>::try_from(bytes).unwrap()))
     }
 }
 

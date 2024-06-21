@@ -1,4 +1,4 @@
-use crate::Block;
+use crate::{Block, HashFunction};
 
 use super::{
     hash::{Hash224, Hash256, Hash384, Hash512},
@@ -72,6 +72,17 @@ static ROUND_CONSTANTS_BIG: [u64; 80] = [
    0x28db77f523047d84, 0x32caab7b40c72493, 0x3c9ebe0a15c9bebc, 0x431d67c49c100d4c,
    0x4cc5d4becb3e42b6, 0x597f299cfc657e2a, 0x5fcb6fab3ad6faec, 0x6c44198c4a475817,
 ];
+
+#[derive(Clone)]
+pub struct Sha256;
+
+impl HashFunction for Sha256 {
+    type Output = Hash256;
+
+    fn hash(&self, message: &[u8]) -> Self::Output {
+        sha256(message)
+    }
+}
 
 pub fn sha224(message: &[u8]) -> Hash224 {
     let chunks = message.chunks_exact(64);
