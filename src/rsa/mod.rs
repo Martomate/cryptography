@@ -1,10 +1,17 @@
+mod asn1;
 mod mgf;
 mod oaep;
 mod pad;
 
+use asn1::{PrivateKeyInfo, SubjectPublicKeyInfo};
 use gcd::Gcd;
 
 pub use pad::RsaPadding;
+
+use crate::{
+    big::BigUint,
+    pem::{asn1::Asn1, PEM},
+};
 
 pub trait PaddingScheme {
     fn encode(&self, label: &[u8], message: &[u8], n_len: usize) -> Vec<u8>;
@@ -19,30 +26,43 @@ pub trait PaddingScheme {
 
 // TODO: the numbers below need to be much bigger than u128, so we need an array of bytes instead
 
+#[derive(Debug, PartialEq, Eq, Clone)]
 pub struct PrivateKey {
-    n: u128,
-    d: u128,
+    n: BigUint,
+    d: BigUint,
 }
 
+#[derive(Debug, PartialEq, Eq, Clone)]
 pub struct PublicKey {
-    n: u128,
-    e: u128,
+    n: BigUint,
+    e: BigUint,
 }
 
 // typically e is 65537;
 
-pub fn create_keys(p: u128, q: u128, e: u128) -> (PrivateKey, PublicKey) {
+pub fn create_keys(p: BigUint, q: BigUint, e: BigUint) -> (PrivateKey, PublicKey) {
+    let p: u128 = p.as_u128().unwrap();
+    let q: u128 = q.as_u128().unwrap();
+    let e: u128 = e.as_u128().unwrap();
+
     let n = p * q;
 
     let l = lcm(p - 1, q - 1);
     let d = inverse(e, l).unwrap();
 
-    (PrivateKey { n, d }, PublicKey { n, e })
+    let n: BigUint = n.into();
+    let d: BigUint = d.into();
+    let e: BigUint = e.into();
+
+    (
+        PrivateKey { n: n.clone(), d },
+        PublicKey { n: n.clone(), e },
+    )
 }
 
 pub struct RsaEncryption {
-    exponent: u128,
-    modulo: u128,
+    exponent: BigUint,
+    modulo: BigUint,
 }
 
 impl From<PrivateKey> for RsaEncryption {
@@ -63,43 +83,67 @@ impl From<PublicKey> for RsaEncryption {
     }
 }
 
-impl RsaEncryption {
-    pub fn encrypt_message(&self, plaintext: &[u8], padding: impl PaddingScheme) -> Vec<u8> {
-        let m = padding.encode(b"", plaintext, self.modulo.ilog2() as usize);
-        self.encrypt(&m)
-    }
+impl TryFrom<PEM> for PrivateKey {
+    type Error = String;
 
-    pub fn encrypt(&self, m: &[u8]) -> Vec<u8> {
-        if m.len() > 16 {
-            todo!("bigger numbers")
-        } else {
-            let mut bytes = [0; 16];
-            bytes[(16 - m.len())..].copy_from_slice(m);
-            let c = pow_mod(<u128>::from_be_bytes(bytes), self.exponent, self.modulo);
-            c.to_be_bytes().into_iter().skip_while(|&n| n == 0).collect()
+    fn try_from(pem: PEM) -> Result<Self, Self::Error> {
+        if pem.label != "PRIVATE KEY" {
+            return Err("must be a private key".to_string());
         }
-    }
+        let asn = Asn1::try_from(pem.data.as_slice())?;
+        let info = PrivateKeyInfo::try_from(asn)?;
 
-    pub fn decrypt_message(&self, ciphertext: &[u8], padding: impl PaddingScheme) -> Vec<u8> {
-        let c = padding
-            .decode(b"", ciphertext, self.modulo.ilog2() as usize)
-            .unwrap();
-        self.decrypt(&c)
-    }
-
-    pub fn decrypt(&self, c: &[u8]) -> Vec<u8> {
-        if c.len() > 16 {
-            todo!("bigger numbers")
-        } else {
-            let mut bytes = [0; 16];
-            bytes[(16 - c.len())..].copy_from_slice(c);
-            let m = pow_mod(<u128>::from_be_bytes(bytes), self.exponent, self.modulo);
-            m.to_be_bytes().into_iter().skip_while(|&n| n == 0).collect()
-        }
+        Ok(Self {
+            n: info.private_key.modulus,
+            d: info.private_key.private_exponent,
+        })
     }
 }
 
-fn mul_mod(mut a: u128, mut b: u128, m: u128) -> u128 {
+impl TryFrom<PEM> for PublicKey {
+    type Error = String;
+
+    fn try_from(pem: PEM) -> Result<Self, Self::Error> {
+        if pem.label != "PUBLIC KEY" {
+            return Err("must be a public key".to_string());
+        }
+        let asn = Asn1::try_from(pem.data.as_slice())?;
+        let info = SubjectPublicKeyInfo::try_from(asn)?;
+
+        Ok(Self {
+            n: info.subject_public_key.modulus,
+            e: info.subject_public_key.public_exponent,
+        })
+    }
+}
+
+impl RsaEncryption {
+    pub fn encrypt_message(&self, plaintext: &[u8], padding: impl PaddingScheme) -> Vec<u8> {
+        let m = padding.encode(b"", plaintext, (self.modulo.bits_used() - 1) as usize / 8);
+        self.encrypt(BigUint::from_bytes(m)).as_bytes().to_owned()
+    }
+
+    pub fn encrypt(&self, m: BigUint) -> BigUint {
+        pow_mod(&m, &self.exponent, &self.modulo)
+    }
+
+    pub fn decrypt_message(&self, ciphertext: &[u8], padding: impl PaddingScheme) -> Vec<u8> {
+        let m = self.decrypt(BigUint::from_bytes(ciphertext));
+        padding
+            .decode(b"", m.as_bytes(), (self.modulo.bits_used() - 1) as usize / 8)
+            .unwrap()
+    }
+
+    pub fn decrypt(&self, c: BigUint) -> BigUint {
+        pow_mod(&c, &self.exponent, &self.modulo)
+    }
+}
+
+fn mul_mod(a: &BigUint, b: &BigUint, m: &BigUint) -> BigUint {
+    let mut a: u128 = a.as_u128().unwrap();
+    let mut b: u128 = b.as_u128().unwrap();
+    let m: u128 = m.as_u128().unwrap();
+
     let mut r = 0;
 
     while b != 0 {
@@ -111,18 +155,20 @@ fn mul_mod(mut a: u128, mut b: u128, m: u128) -> u128 {
         a %= m;
         b >>= 1;
     }
-    r
+    BigUint::from(r)
 }
 
-fn pow_mod(mut a: u128, mut p: u128, m: u128) -> u128 {
-    let mut r = 1;
+fn pow_mod(a: &BigUint, p: &BigUint, m: &BigUint) -> BigUint {
+    let mut a = a.clone();
 
-    while p != 0 {
-        if p & 1 != 0 {
-            r = mul_mod(r, a, m);
+    let mut r = BigUint::from(1);
+
+    let steps = p.bits_used();
+    for idx in 0..steps {
+        if p.is_set(idx) {
+            r = mul_mod(&r, &a, m);
         }
-        a = mul_mod(a, a, m);
-        p >>= 1;
+        a = mul_mod(&a, &a, m);
     }
     r
 }
@@ -157,28 +203,34 @@ mod tests {
 
     #[test]
     fn mul_mod_small() {
-        assert_eq!(mul_mod(2, 3, 10000), 6);
-        assert_eq!(mul_mod(2, 3, 7), 6);
-        assert_eq!(mul_mod(2, 3, 3), 0);
+        assert_eq!(mul_mod(&BigUint::from(2), &BigUint::from(3), &BigUint::from(10000)), BigUint::from(6));
+        assert_eq!(mul_mod(&BigUint::from(2), &BigUint::from(3), &BigUint::from(7)), BigUint::from(6));
+        assert_eq!(mul_mod(&BigUint::from(2), &BigUint::from(3), &BigUint::from(3)), BigUint::from(0));
     }
 
     #[test]
     fn mul_mod_medium() {
-        assert_eq!(mul_mod(2, 30, 1000000000000000), 2 * 30);
-        assert_eq!(mul_mod(2, 30, 10), (2 * 30) % 10);
+        assert_eq!(mul_mod(&BigUint::from(2), &BigUint::from(30), &BigUint::from(1000000000000000)), BigUint::from(2 * 30));
+        assert_eq!(mul_mod(&BigUint::from(2), &BigUint::from(30), &BigUint::from(10)), BigUint::from((2 * 30) % 10));
     }
 
     #[test]
     fn pow_mod_small() {
-        assert_eq!(pow_mod(2, 3, 10000), 8);
-        assert_eq!(pow_mod(2, 3, 7), 1);
-        assert_eq!(pow_mod(2, 3, 3), 2);
+        assert_eq!(pow_mod(&2.into(), &3.into(), &10000.into()), BigUint::from(8));
+        assert_eq!(pow_mod(&2.into(), &3.into(), &7.into()), BigUint::from(1));
+        assert_eq!(pow_mod(&2.into(), &3.into(), &3.into()), BigUint::from(2));
     }
 
     #[test]
     fn pow_mod_medium() {
-        assert_eq!(pow_mod(2, 30, 1000000000000000), 1 << 30);
-        assert_eq!(pow_mod(2, 30, 10000), (1 << 30) % 10000);
+        assert_eq!(
+            pow_mod(&2.into(), &30.into(), &1000000000000000.into()),
+            (1 << 30).into()
+        );
+        assert_eq!(
+            pow_mod(&2.into(), &30.into(), &10000.into()),
+            ((1 << 30) % 10000).into()
+        );
     }
 
     #[test]
@@ -206,11 +258,12 @@ mod tests {
         let q = 11;
         let e = 17;
 
-        let (private_key, public_key) = create_keys(p, q, e);
+        let (private_key, public_key) =
+            create_keys(BigUint::from(p), BigUint::from(q), BigUint::from(e));
 
-        let d = private_key.d;
-        let n = public_key.n;
-        assert_eq!(public_key.e, e);
+        let d: u128 = private_key.d.as_u128().unwrap();
+        let n: u128 = public_key.n.as_u128().unwrap();
+        assert_eq!(public_key.e, BigUint::from(e));
 
         assert_eq!(n, p * q);
         assert_eq!((e * d) % lcm(p - 1, q - 1), 1);
@@ -218,10 +271,69 @@ mod tests {
 
     #[test]
     fn more_small_keys() {
-        let (pr, pb) = create_keys(61, 53, 17);
-        assert_eq!(pb.e, 17);
-        assert_eq!(pb.n, 61 * 53);
-        assert_eq!(pr.n, 61 * 53);
-        assert_eq!(pr.d, 413);
+        let p = BigUint::from(61);
+        let q = BigUint::from(53);
+        let e = BigUint::from(17);
+
+        let n = BigUint::from(61 * 53);
+        let d = BigUint::from(413);
+
+        let (pr, pb) = create_keys(p, q, e.clone());
+        assert_eq!(pb.e, e);
+        assert_eq!(pb.n, n);
+        assert_eq!(pr.n, n);
+        assert_eq!(pr.d, d);
+    }
+
+    struct NoPadding;
+
+    impl PaddingScheme for NoPadding {
+        fn encode(&self, _label: &[u8], message: &[u8], n_len: usize) -> Vec<u8> {
+            let mut output = Vec::with_capacity(n_len);
+
+            for _ in 0..n_len {
+                output.push(message.len() as u8);
+            }
+
+            for (i, &m) in message.iter().enumerate() {
+                output[i] = m;
+            }
+
+            dbg!(&output);
+
+            output
+        }
+    
+        fn decode(
+            &self,
+            _label: &[u8],
+            encoded_message: &[u8],
+            _n_len: usize,
+        ) -> Result<Vec<u8>, &'static str> {
+            let message_len = *encoded_message.last().unwrap() as usize;
+
+            dbg!(&encoded_message);
+
+            if message_len > encoded_message.len() {
+                return Err("message too long");
+            }
+
+            Ok(encoded_message[0..message_len].to_vec())
+        }
+    }
+
+    #[test]
+    fn example_encrypt_e2e_small() {
+        let p = BigUint::from(190238395574637701);
+        let q = BigUint::from(725918707442996609);
+        let e = BigUint::from(17);
+
+        let (private_key, public_key) = create_keys(p, q, e);
+
+        let plaintext = b"Hello World!";
+        let ciphertext = RsaEncryption::from(public_key).encrypt_message(plaintext, NoPadding);
+        let decrypted = RsaEncryption::from(private_key).decrypt_message(&ciphertext, NoPadding);
+
+        assert_eq!(decrypted, plaintext);
     }
 }

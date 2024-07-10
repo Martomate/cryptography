@@ -21,9 +21,12 @@ where
         message: &[u8],
         n_len: usize,
     ) -> Vec<u8> {
-        dbg!(n_len, message.len(), N);
         let label_hash = self.hasher.hash(label).into();
-        let ps_len = n_len - message.len() - 2 * N - 2;
+        let sub = message.len() + 2 * N + 2;
+        if n_len < sub {
+            panic!("output length is too small, expected at least {sub} but got {n_len}");
+        }
+        let ps_len = n_len - sub;
 
         // data block
         let mut db = Vec::with_capacity(n_len - N - 1);

@@ -1,3 +1,5 @@
+pub mod asn1;
+
 use std::{fmt::Display, str::FromStr};
 
 use base64::prelude::*;
