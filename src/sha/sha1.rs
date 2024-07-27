@@ -27,10 +27,10 @@ fn process_chunk(hash: &mut [u32; 5], chunk: [u8; 64]) {
 
     for (i, &w) in w.iter().enumerate() {
         let (k, f) = match i {
-            0..=19 => (0x5A827999, (b & c) | ((!b) & d)),
-            20..=39 => (0x6ED9EBA1, b ^ c ^ d),
-            40..=59 => (0x8F1BBCDC, (b & c) | (b & d) | (c & d)),
-            60..=79 => (0xCA62C1D6, b ^ c ^ d),
+            0..20 => (0x5A827999, (b & c) | ((!b) & d)),
+            20..40 => (0x6ED9EBA1, b ^ c ^ d),
+            40..60 => (0x8F1BBCDC, (b & c) | (b & d) | (c & d)),
+            60..80 => (0xCA62C1D6, b ^ c ^ d),
             _ => unreachable!(),
         };
 
