@@ -38,7 +38,7 @@ impl Display for PEM {
     }
 }
 
-fn decode_pem(s: &str) -> Result<PEM, String> {
+fn extract_pem_pieces(s: &str) -> Result<(&str, Vec<&str>), &'static str> {
     let mut begin_label: Option<&str> = None;
     let mut data_lines: Vec<&str> = Vec::new();
     let mut end_label: Option<&str> = None;
@@ -47,24 +47,24 @@ fn decode_pem(s: &str) -> Result<PEM, String> {
         let l = l.trim();
         if let Some(l) = l.strip_prefix("-----BEGIN ") {
             if begin_label.is_some() {
-                return Err("multiple BEGIN lines".to_string());
+                return Err("multiple BEGIN lines");
             }
             if let Some(l) = l.strip_suffix("-----") {
                 begin_label = Some(l);
             } else {
-                return Err("invalid BEGIN line".to_string());
+                return Err("invalid BEGIN line");
             }
         } else if let Some(l) = l.strip_prefix("-----END ") {
             if begin_label.is_none() {
-                return Err("found END line before the BEGIN line".to_string())
+                return Err("found END line before the BEGIN line")
             }
             if end_label.is_some() {
-                return Err("multiple END lines".to_string());
+                return Err("multiple END lines");
             }
             if let Some(l) = l.strip_suffix("-----") {
                 end_label = Some(l);
             } else {
-                return Err("invalid END line".to_string());
+                return Err("invalid END line");
             }
         } else if begin_label.is_some() && end_label.is_none() {
             data_lines.push(l);
@@ -73,20 +73,30 @@ fn decode_pem(s: &str) -> Result<PEM, String> {
         }
     }
 
-    let Some(label) = begin_label else {
-        return Err("BEGIN line is missing".to_string());
+    let Some(begin_label) = begin_label else {
+        return Err("BEGIN line is missing");
     };
     let Some(end_label) = end_label else {
-        return Err("END line is missing".to_string());
+        return Err("END line is missing");
     };
-    if end_label != label {
-        return Err("label mismatch".to_string())
+    if end_label != begin_label {
+        return Err("label mismatch")
     }
+    Ok((begin_label, data_lines))
+}
 
-    let data_base64 = data_lines.join("");
+fn parse_pem_data(base64_lines: &[&str]) -> Result<Vec<u8>, String> {
+    let data_base64 = base64_lines.join("");
     let data = BASE64_STANDARD
         .decode(data_base64.as_bytes())
         .map_err(|e| e.to_string())?;
+    Ok(data)
+}
+
+fn decode_pem(s: &str) -> Result<PEM, String> {
+    let (label, data_base64_lines) = extract_pem_pieces(s)?;
+
+    let data = parse_pem_data(&data_base64_lines)?;
 
     Ok(PEM {
         label: label.to_string(),

@@ -1,3 +1,5 @@
+use std::ops::{Add, Rem, Shl, Shr};
+
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub struct BigUint {
     bytes: Vec<u8>,
@@ -12,13 +14,22 @@ impl BigUint {
             .skip_while(|&&n| n == 0)
             .cloned()
             .collect();
-        let bits_used = (bytes.len() - 1) as u32 * 8
-            + (if bytes[0] == 0 {
-                0
-            } else {
-                bytes[0].ilog2() + 1
-            });
+
+        let mut bits_used = 0;
+        if !bytes.is_empty() {
+            bits_used += (bytes.len() - 1) as u32 * 8;
+            bits_used += bytes[0].ilog2() + 1;
+        }
         Self { bytes, bits_used }
+    }
+
+    fn from_u128(value: u128) -> Self {
+        let bytes = value.to_be_bytes();
+        let bytes = bytes.into_iter().skip_while(|&n| n == 0).collect();
+        Self {
+            bytes,
+            bits_used: if value == 0 { 0 } else { value.ilog2() + 1 },
+        }
     }
 
     pub fn as_u128(&self) -> Result<u128, String> {
@@ -38,7 +49,13 @@ impl BigUint {
     }
 
     pub fn is_set(&self, idx: u32) -> bool {
+        if self.bytes.is_empty() {
+            return false;
+        }
         let byte_idx = self.bytes.len() - 1 - (idx / 8) as usize;
+        if byte_idx >= self.bytes.len() {
+            return false;
+        }
         let bit_idx = idx % 8;
         (self.bytes[byte_idx] >> bit_idx) & 1 != 0
     }
@@ -50,12 +67,98 @@ impl BigUint {
 
 impl From<u128> for BigUint {
     fn from(value: u128) -> Self {
-        let bytes = value.to_be_bytes();
-        let bytes = bytes.into_iter().skip_while(|&n| n == 0).collect();
-        Self {
-            bytes,
-            bits_used: if value == 0 { 0 } else { value.ilog2() + 1 },
+        Self::from_u128(value)
+    }
+}
+
+impl Add<&BigUint> for BigUint {
+    type Output = BigUint;
+
+    fn add(self, rhs: &BigUint) -> BigUint {
+        let mut dest: Vec<u8> = (0..(self.bytes.len().max(rhs.bytes.len()) + 1))
+            .map(|_| 0)
+            .collect();
+
+        {
+            let l = &self.bytes;
+            let r = &rhs.bytes;
+
+            let l_len = l.len();
+            let r_len = r.len();
+            let d_len = dest.len();
+
+            for i in 0..d_len - 1 {
+                let mut sum = 0_u16;
+                sum += dest[d_len - 1 - i] as u16;
+                if i < l_len {
+                    sum += l[l_len - 1 - i] as u16;
+                }
+                if i < r_len {
+                    sum += r[r_len - 1 - i] as u16;
+                }
+                dest[d_len - 1 - i] = (sum & 0xff) as u8;
+                dest[d_len - 2 - i] = ((sum >> 8) & 0xff) as u8;
+            }
         }
+
+        BigUint::from_bytes(dest)
+    }
+}
+
+impl Rem<&BigUint> for BigUint {
+    type Output = BigUint;
+
+    fn rem(self, rhs: &BigUint) -> BigUint {
+        if rhs.bits_used > self.bits_used {
+            return self;
+        }
+        // TODO: implement using comparison and subtraction
+        BigUint::from_u128(self.as_u128().unwrap() % rhs.as_u128().unwrap())
+    }
+}
+
+impl Shl<u32> for BigUint {
+    type Output = BigUint;
+
+    fn shl(self, rhs: u32) -> BigUint {
+        // add whole 0-bytes if possible
+        if rhs >= 8 {
+            let steps = rhs / 8;
+            let bits = steps * 8;
+
+            // shift the rest first
+            let mut result = self.shl(rhs - bits);
+
+            result.bytes.extend((0..steps).map(|_| 0));
+            result.bits_used += bits;
+            result
+        } else {
+            let mut result: Vec<u8> = (0..self.bytes.len() + 1).map(|_| 0).collect();
+            for i in (0..self.bytes.len()).rev() {
+                result[i + 1] |= self.bytes[i] << rhs;
+                result[i] = self.bytes[i] >> (8 - rhs);
+            }
+            BigUint::from_bytes(result)
+        }
+    }
+}
+
+impl Shr<u32> for BigUint {
+    type Output = BigUint;
+
+    fn shr(self, rhs: u32) -> BigUint {
+        if rhs == 0 {
+            return self;
+        }
+        let mut result: Vec<u8> = (0..self.bytes.len()).map(|_| 0).collect();
+        for i in 0..self.bytes.len() {
+            result[i] |= self.bytes[i] >> 1;
+            if i < self.bytes.len() - 1 {
+                result[i + 1] = self.bytes[i] << (8 - 1);
+            }
+        }
+
+        BigUint::from_bytes(result).shr(rhs - 1)
     }
 }
 

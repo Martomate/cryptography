@@ -10,7 +10,7 @@ pub enum Asn1 {
 
 impl Asn1 {
     fn parse_from_bytes(bytes: &[u8]) -> Result<(Asn1, &[u8]), String> {
-        if bytes.len() == 1 {
+        if bytes.len() <= 1 {
             return Err("tag had no length".to_string());
         }
         let tag = bytes[0];

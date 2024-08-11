@@ -34,10 +34,8 @@ pub struct PublicKey {
     pub public_exponent: BigUint, // e
 }
 
-impl TryFrom<Asn1> for PrivateKeyInfo {
-    type Error = String;
-
-    fn try_from(asn: Asn1) -> Result<Self, Self::Error> {
+impl PrivateKeyInfo {
+    fn from_asn1(asn: Asn1) -> Result<Self, String> {
         let Asn1::Sequence(seq) = asn else {
             return Err(format!(
                 "expected content to be wrapped in a sequence tag, but found tag {:?}",
@@ -50,7 +48,7 @@ impl TryFrom<Asn1> for PrivateKeyInfo {
         if seq[0] != Asn1::Integer(vec![0]) {
             return Err("expected first element to be be zero".to_string());
         }
-        let algo = AlgorithmIdentifier::try_from(&seq[1])?;
+        let algo = AlgorithmIdentifier::try_from(seq[1].clone())?;
         if algo.algorithm != vec![42, 134, 72, 134, 247, 13, 1, 1, 1] {
             // RSA encryption: 1 2 840 113549 1 1 1
             return Err("expected private key algorithm to be RSA".to_string());
@@ -62,8 +60,8 @@ impl TryFrom<Asn1> for PrivateKeyInfo {
 
         let asn = Asn1::try_from(bytes.as_slice())
             .map_err(|e| format!("failed to parse ASN.1: {}", e))?;
-        let pr: PrivateKey = PrivateKey::try_from(&asn)
-            .map_err(|e| format!("faile to extract private key from ASN.1: {}", e))?;
+        let pr: PrivateKey = PrivateKey::try_from(asn)
+            .map_err(|e| format!("failed to extract private key from ASN.1: {}", e))?;
 
         Ok(Self {
             version: 0,
@@ -73,10 +71,8 @@ impl TryFrom<Asn1> for PrivateKeyInfo {
     }
 }
 
-impl TryFrom<Asn1> for SubjectPublicKeyInfo {
-    type Error = String;
-
-    fn try_from(asn: Asn1) -> Result<Self, Self::Error> {
+impl SubjectPublicKeyInfo {
+    fn from_asn1(asn: Asn1) -> Result<Self, String> {
         let Asn1::Sequence(seq) = asn else {
             return Err(format!(
                 "expected content to be wrapped in a sequence tag, but found tag {:?}",
@@ -86,7 +82,7 @@ impl TryFrom<Asn1> for SubjectPublicKeyInfo {
         if seq.len() != 2 {
             return Err("expected two elements".to_string());
         }
-        let algo = AlgorithmIdentifier::try_from(&seq[0])?;
+        let algo = AlgorithmIdentifier::try_from(seq[0].clone())?;
         if algo.algorithm != vec![42, 134, 72, 134, 247, 13, 1, 1, 1] {
             // RSA encryption: 1 2 840 113549 1 1 1
             return Err("expected algorithm to be RSA".to_string());
@@ -111,11 +107,9 @@ impl TryFrom<Asn1> for SubjectPublicKeyInfo {
     }
 }
 
-impl TryFrom<&Asn1> for AlgorithmIdentifier {
-    type Error = String;
-
-    fn try_from(asn: &Asn1) -> Result<Self, Self::Error> {
-        let Asn1::Sequence(ref seq) = *asn else {
+impl AlgorithmIdentifier {
+    fn from_asn1(asn: Asn1) -> Result<Self, String> {
+        let Asn1::Sequence(seq) = asn else {
             return Err("expected sequence".to_string());
         };
         let [Asn1::ObjectIdentifier(algo), Asn1::Null] = seq.as_slice() else {
@@ -128,10 +122,8 @@ impl TryFrom<&Asn1> for AlgorithmIdentifier {
     }
 }
 
-impl TryFrom<&Asn1> for PrivateKey {
-    type Error = String;
-
-    fn try_from(asn: &Asn1) -> Result<Self, Self::Error> {
+impl PrivateKey {
+    fn from_asn1(asn: Asn1) -> Result<Self, String> {
         let Asn1::Sequence(seq) = asn else {
             return Err(format!(
                 "expected content to be wrapped in a sequence tag, but found tag {:?}",
@@ -175,10 +167,8 @@ impl TryFrom<&Asn1> for PrivateKey {
     }
 }
 
-impl TryFrom<Asn1> for PublicKey {
-    type Error = String;
-
-    fn try_from(asn: Asn1) -> Result<Self, Self::Error> {
+impl PublicKey {
+    fn from_asn1(asn: Asn1) -> Result<Self, String> {
         let Asn1::Sequence(seq) = asn else {
             return Err(format!(
                 "expected content to be wrapped in a sequence tag, but found tag {:?}",
@@ -205,6 +195,46 @@ impl TryFrom<Asn1> for PublicKey {
     }
 }
 
+impl TryFrom<Asn1> for PrivateKeyInfo {
+    type Error = String;
+
+    fn try_from(asn: Asn1) -> Result<Self, Self::Error> {
+        PrivateKeyInfo::from_asn1(asn)
+    }
+}
+
+impl TryFrom<Asn1> for SubjectPublicKeyInfo {
+    type Error = String;
+
+    fn try_from(asn: Asn1) -> Result<Self, Self::Error> {
+        SubjectPublicKeyInfo::from_asn1(asn)
+    }
+}
+
+impl TryFrom<Asn1> for AlgorithmIdentifier {
+    type Error = String;
+
+    fn try_from(asn: Asn1) -> Result<Self, Self::Error> {
+        AlgorithmIdentifier::from_asn1(asn)
+    }
+}
+
+impl TryFrom<Asn1> for PrivateKey {
+    type Error = String;
+
+    fn try_from(asn: Asn1) -> Result<Self, Self::Error> {
+        PrivateKey::from_asn1(asn)
+    }
+}
+
+impl TryFrom<Asn1> for PublicKey {
+    type Error = String;
+
+    fn try_from(asn: Asn1) -> Result<Self, Self::Error> {
+        PublicKey::from_asn1(asn)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use std::str::FromStr;
@@ -219,7 +249,7 @@ mod tests {
         let der_bytes = hex::decode(der_hex).unwrap();
 
         let asn1 = Asn1::try_from(der_bytes.as_slice()).unwrap();
-        let asn1 = PrivateKey::try_from(&asn1).unwrap();
+        let asn1 = PrivateKey::try_from(asn1).unwrap();
 
         let expected_asn1 = PrivateKey {
             version: 0,

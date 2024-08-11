@@ -130,7 +130,11 @@ impl RsaEncryption {
     pub fn decrypt_message(&self, ciphertext: &[u8], padding: impl PaddingScheme) -> Vec<u8> {
         let m = self.decrypt(BigUint::from_bytes(ciphertext));
         padding
-            .decode(b"", m.as_bytes(), (self.modulo.bits_used() - 1) as usize / 8)
+            .decode(
+                b"",
+                m.as_bytes(),
+                (self.modulo.bits_used() - 1) as usize / 8,
+            )
             .unwrap()
     }
 
@@ -140,22 +144,20 @@ impl RsaEncryption {
 }
 
 fn mul_mod(a: &BigUint, b: &BigUint, m: &BigUint) -> BigUint {
-    let mut a: u128 = a.as_u128().unwrap();
-    let mut b: u128 = b.as_u128().unwrap();
-    let m: u128 = m.as_u128().unwrap();
+    let mut r = BigUint::from(0);
+    let mut a = a.clone();
+    let mut b = b.clone();
 
-    let mut r = 0;
-
-    while b != 0 {
-        if b & 1 != 0 {
-            r += a;
-            r %= m;
+    while b.bits_used() != 0 {
+        if b.is_set(0) {
+            r = r + &a;
+            r = r % m;
         }
-        a <<= 1;
-        a %= m;
-        b >>= 1;
+        a = a << 1;
+        a = a % m;
+        b = b >> 1;
     }
-    BigUint::from(r)
+    r
 }
 
 fn pow_mod(a: &BigUint, p: &BigUint, m: &BigUint) -> BigUint {
@@ -203,20 +205,58 @@ mod tests {
 
     #[test]
     fn mul_mod_small() {
-        assert_eq!(mul_mod(&BigUint::from(2), &BigUint::from(3), &BigUint::from(10000)), BigUint::from(6));
-        assert_eq!(mul_mod(&BigUint::from(2), &BigUint::from(3), &BigUint::from(7)), BigUint::from(6));
-        assert_eq!(mul_mod(&BigUint::from(2), &BigUint::from(3), &BigUint::from(3)), BigUint::from(0));
+        assert_eq!(
+            mul_mod(&BigUint::from(2), &BigUint::from(3), &BigUint::from(10000)),
+            BigUint::from(6)
+        );
+        assert_eq!(
+            mul_mod(&BigUint::from(2), &BigUint::from(3), &BigUint::from(7)),
+            BigUint::from(6)
+        );
+        assert_eq!(
+            mul_mod(&BigUint::from(2), &BigUint::from(3), &BigUint::from(3)),
+            BigUint::from(0)
+        );
     }
 
     #[test]
     fn mul_mod_medium() {
-        assert_eq!(mul_mod(&BigUint::from(2), &BigUint::from(30), &BigUint::from(1000000000000000)), BigUint::from(2 * 30));
-        assert_eq!(mul_mod(&BigUint::from(2), &BigUint::from(30), &BigUint::from(10)), BigUint::from((2 * 30) % 10));
+        assert_eq!(
+            mul_mod(
+                &BigUint::from(2),
+                &BigUint::from(30),
+                &BigUint::from(1000000000000000)
+            ),
+            BigUint::from(2 * 30)
+        );
+        assert_eq!(
+            mul_mod(&BigUint::from(2), &BigUint::from(30), &BigUint::from(10)),
+            BigUint::from((2 * 30) % 10)
+        );
+    }
+
+    #[test]
+    fn mul_mod_bigger_than_u128() {
+        assert_eq!(
+            mul_mod(
+                &BigUint::from(1 << 91),
+                &BigUint::from(1 << 87),
+                &BigUint::from_bytes([1_u128, 0, 0].map(|n| n.to_be_bytes()).concat()),
+            ),
+            BigUint::from_bytes([(1_u128 << (91 + 87 - 128)).to_be_bytes(), 0_u128.to_be_bytes()].concat())
+        );
+        assert_eq!(
+            mul_mod(&BigUint::from(2), &BigUint::from(30), &BigUint::from(10)),
+            BigUint::from((2 * 30) % 10)
+        );
     }
 
     #[test]
     fn pow_mod_small() {
-        assert_eq!(pow_mod(&2.into(), &3.into(), &10000.into()), BigUint::from(8));
+        assert_eq!(
+            pow_mod(&2.into(), &3.into(), &10000.into()),
+            BigUint::from(8)
+        );
         assert_eq!(pow_mod(&2.into(), &3.into(), &7.into()), BigUint::from(1));
         assert_eq!(pow_mod(&2.into(), &3.into(), &3.into()), BigUint::from(2));
     }
@@ -303,7 +343,7 @@ mod tests {
 
             output
         }
-    
+
         fn decode(
             &self,
             _label: &[u8],
