@@ -203,6 +203,10 @@ fn inverse(a: u128, n: u128) -> Option<u128> {
 mod tests {
     use super::*;
 
+    fn join_u128s<const C: usize>(nums: [u128; C]) -> [[u8; 16]; C] {
+        nums.map(|n| n.to_be_bytes())
+    }
+
     #[test]
     fn mul_mod_small() {
         assert_eq!(
@@ -241,13 +245,50 @@ mod tests {
             mul_mod(
                 &BigUint::from(1 << 91),
                 &BigUint::from(1 << 87),
-                &BigUint::from_bytes([1_u128, 0, 0].map(|n| n.to_be_bytes()).concat()),
+                &BigUint::from_bytes(join_u128s([1, 0, 0]).concat()),
             ),
-            BigUint::from_bytes([(1_u128 << (91 + 87 - 128)).to_be_bytes(), 0_u128.to_be_bytes()].concat())
+            BigUint::from_bytes(join_u128s([(1 << (91 + 87 - 128)), 0]).concat())
         );
+    }
+
+    #[test]
+    fn mul_mod_big_with_mod() {
+        let a: u128 = 1 << 91 | 0x7934585543782475;
+        let b: u128 = 1 << 87;
+        let m: u128 = 1 << 86 | 1 << 85 | 0x8347657834653432;
+
+        // calculate answer in steps to not overflow 128 bits
+        let ans: u128 = a;
+        let ans = (ans << 30) % m;
+        let ans = (ans << 30) % m;
+        let ans = (ans << 27) % m;
+
         assert_eq!(
-            mul_mod(&BigUint::from(2), &BigUint::from(30), &BigUint::from(10)),
-            BigUint::from((2 * 30) % 10)
+            mul_mod(&BigUint::from(a), &BigUint::from(b), &BigUint::from(m)),
+            BigUint::from(ans),
+        );
+    }
+
+    #[test]
+    fn mul_mod_big_with_big_mod() {
+        let a: u128 = 1 << 91 | 0x7934585543782475;
+        let b: u128 = 1 << 87;
+        let m: u128 = 1 << 86 | 1 << 85 | 0x8347657834653432;
+
+        // calculate answer in steps to not overflow 128 bits
+        let ans: u128 = a;
+        let ans = (ans << 30) % m;
+        let ans = (ans << 30) % m;
+        let ans = (ans << 27) % m;
+
+        // (a << n) * (b << n) mod (m << n << n) = (a * b mod m) << n << n
+        assert_eq!(
+            mul_mod(
+                &BigUint::from_bytes(join_u128s([a, 0]).concat()),
+                &BigUint::from_bytes(join_u128s([b, 0]).concat()),
+                &BigUint::from_bytes(join_u128s([m, 0, 0]).concat())
+            ),
+            BigUint::from_bytes(join_u128s([ans, 0, 0]).concat())
         );
     }
 

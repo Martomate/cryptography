@@ -1,4 +1,7 @@
-use std::ops::{Add, Rem, Shl, Shr};
+use std::{
+    cmp::Ordering,
+    ops::{Add, Rem, Shl, Shr, Sub},
+};
 
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub struct BigUint {
@@ -49,6 +52,9 @@ impl BigUint {
     }
 
     pub fn is_set(&self, idx: u32) -> bool {
+        if idx >= self.bits_used {
+            return false;
+        }
         if self.bytes.is_empty() {
             return false;
         }
@@ -58,6 +64,23 @@ impl BigUint {
         }
         let bit_idx = idx % 8;
         (self.bytes[byte_idx] >> bit_idx) & 1 != 0
+    }
+
+    /** Note: after calling this function the bits_used field might be wrong */
+    pub fn update(&mut self, idx: u32, set: bool) {
+        if self.bytes.is_empty() {
+            panic!("not enough space");
+        }
+        let byte_idx = self.bytes.len() - 1 - (idx / 8) as usize;
+        if byte_idx >= self.bytes.len() {
+            panic!("not enough space");
+        }
+        let bit_idx = idx % 8;
+        if set {
+            self.bytes[byte_idx] |= 1 << bit_idx;
+        } else {
+            self.bytes[byte_idx] &= !(1 << bit_idx);
+        }
     }
 
     pub fn as_bytes(&self) -> &[u8] {
@@ -105,6 +128,56 @@ impl Add<&BigUint> for BigUint {
     }
 }
 
+impl Ord for BigUint {
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        match self.bits_used.cmp(&other.bits_used) {
+            Ordering::Equal => {
+                for i in (0..self.bits_used).rev() {
+                    let (a, b) = (self.is_set(i), other.is_set(i));
+                    if a && !b {
+                        return Ordering::Greater;
+                    }
+                    if !a && b {
+                        return Ordering::Less;
+                    }
+                }
+                Ordering::Equal
+            }
+            ord => ord,
+        }
+    }
+}
+
+impl PartialOrd for BigUint {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+impl Sub<&BigUint> for BigUint {
+    type Output = BigUint;
+
+    fn sub(self, rhs: &BigUint) -> Self::Output {
+        // ensure there is enough space for the upcoming addition
+        let mut inv = Vec::with_capacity(self.bytes.len() + 1);
+
+        let offset = inv.capacity() - rhs.bytes.len();
+        for _ in 0..offset {
+            inv.push(!0);
+        }
+        for i in 0..rhs.bytes.len() {
+            inv.push(!rhs.bytes[i]);
+        }
+        let mut res = BigUint::from_bytes(inv) + &BigUint::from_u128(1) + &self;
+
+        for i in self.bits_used..res.bits_used {
+            res.update(i, false);
+        }
+
+        BigUint::from_bytes(res.bytes)
+    }
+}
+
 impl Rem<&BigUint> for BigUint {
     type Output = BigUint;
 
@@ -112,8 +185,19 @@ impl Rem<&BigUint> for BigUint {
         if rhs.bits_used > self.bits_used {
             return self;
         }
-        // TODO: implement using comparison and subtraction
-        BigUint::from_u128(self.as_u128().unwrap() % rhs.as_u128().unwrap())
+
+        let d = self.bits_used - rhs.bits_used;
+
+        let mut rest = self.clone();
+        let mut m = rhs.clone() << d;
+        for _ in (0..=d).rev() {
+            if m <= rest {
+                rest = rest - &m;
+            }
+            m = m >> 1;
+        }
+
+        rest
     }
 }
 
@@ -122,7 +206,9 @@ impl Shl<u32> for BigUint {
 
     fn shl(self, rhs: u32) -> BigUint {
         // add whole 0-bytes if possible
-        if rhs >= 8 {
+        if rhs == 0 {
+            self
+        } else if rhs >= 8 {
             let steps = rhs / 8;
             let bits = steps * 8;
 
@@ -222,6 +308,50 @@ mod tests {
                 0x56, 0x78, 0x90, 0x12,
                 0x34, 0x56, 0x78, 0x90,
             ], bits_used: 10 * 8 - 3 },
+        );
+    }
+
+    #[test]
+    fn sub_small() {
+        assert_eq!(
+            BigUint::from_u128(13) - &BigUint::from_u128(5),
+            BigUint::from_u128(8)
+        );
+    }
+
+    #[test]
+    fn sub_medium() {
+        assert_eq!(
+            BigUint::from_u128(13_000_000_000_000) - &BigUint::from_u128(5_000_000_000_000),
+            BigUint::from_u128(8_000_000_000_000)
+        );
+    }
+
+    #[test]
+    fn sub_big() {
+        assert_eq!(
+            BigUint::from_bytes([13, 12, 11, 10]) - &BigUint::from_bytes([6, 7, 8, 9]),
+            BigUint::from_bytes([7, 5, 3, 1])
+        );
+        assert_eq!(
+            BigUint::from_bytes([13, 12, 11, 10]) - &BigUint::from_bytes([7, 8, 9]),
+            BigUint::from_bytes([13, 5, 3, 1])
+        );
+        assert_eq!(
+            BigUint::from_bytes([13, 12, 11, 10]) - &BigUint::from_bytes([13, 7, 8, 9]),
+            BigUint::from_bytes([5, 3, 1])
+        );
+        assert_eq!(
+            BigUint::from_bytes([13, 12, 11, 10]) - &BigUint::from_bytes([9]),
+            BigUint::from_bytes([13, 12, 11, 1])
+        );
+        assert_eq!(
+            BigUint::from_bytes([13, 12, 11, 10]) - &BigUint::from_bytes([13, 12, 11, 10]),
+            BigUint::from_u128(0)
+        );
+        assert_eq!(
+            BigUint::from_bytes([13, 12, 11, 10]) - &BigUint::from_bytes([11]),
+            BigUint::from_bytes([13, 12, 10, 255])
         );
     }
 }
