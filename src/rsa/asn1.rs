@@ -155,14 +155,14 @@ impl PrivateKey {
 
         Ok(Self {
             version: version[0],
-            modulus: BigUint::from_bytes(modulus),
-            public_exponent: BigUint::from_bytes(public_exponent),
-            private_exponent: BigUint::from_bytes(private_exponent),
-            prime1: BigUint::from_bytes(prime1),
-            prime2: BigUint::from_bytes(prime2),
-            exponent1: BigUint::from_bytes(exponent1),
-            exponent2: BigUint::from_bytes(exponent2),
-            coefficient: BigUint::from_bytes(coefficient),
+            modulus: BigUint::from_be_bytes(modulus),
+            public_exponent: BigUint::from_be_bytes(public_exponent),
+            private_exponent: BigUint::from_be_bytes(private_exponent),
+            prime1: BigUint::from_be_bytes(prime1),
+            prime2: BigUint::from_be_bytes(prime2),
+            exponent1: BigUint::from_be_bytes(exponent1),
+            exponent2: BigUint::from_be_bytes(exponent2),
+            coefficient: BigUint::from_be_bytes(coefficient),
         })
     }
 }
@@ -189,8 +189,8 @@ impl PublicKey {
         };
 
         Ok(Self {
-            modulus: BigUint::from_bytes(modulus),
-            public_exponent: BigUint::from_bytes(public_exponent),
+            modulus: BigUint::from_be_bytes(modulus),
+            public_exponent: BigUint::from_be_bytes(public_exponent),
         })
     }
 }
@@ -339,8 +339,8 @@ mod tests {
     fn private_key_from_pem() {
         let pem = PEM::from_str(EXAMPLE_PRIVATE_KEY).unwrap();
 
-        let expected_n = BigUint::from_bytes(hex::decode(EXAMPLE_N_HEX).unwrap());
-        let expected_d = BigUint::from_bytes(hex::decode(EXAMPLE_D_HEX).unwrap());
+        let expected_n = BigUint::from_be_bytes(hex::decode(EXAMPLE_N_HEX).unwrap());
+        let expected_d = BigUint::from_be_bytes(hex::decode(EXAMPLE_D_HEX).unwrap());
 
         let asn1 = Asn1::try_from(pem.data.as_slice()).unwrap();
         let info = PrivateKeyInfo::try_from(asn1).unwrap();
@@ -358,8 +358,8 @@ mod tests {
     fn public_key_from_pem() {
         let pem = PEM::from_str(EXAMPLE_PUBLIC_KEY).unwrap();
 
-        let expected_n = BigUint::from_bytes(hex::decode(EXAMPLE_N_HEX).unwrap());
-        let expected_e = BigUint::from_bytes(hex::decode(EXAMPLE_E_HEX).unwrap());
+        let expected_n = BigUint::from_be_bytes(hex::decode(EXAMPLE_N_HEX).unwrap());
+        let expected_e = BigUint::from_be_bytes(hex::decode(EXAMPLE_E_HEX).unwrap());
 
         let asn1 = Asn1::try_from(pem.data.as_slice()).unwrap();
         let info = SubjectPublicKeyInfo::try_from(asn1).unwrap();

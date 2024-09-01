@@ -5,15 +5,15 @@ use cryptography::{big::BigUint, pem::PEM, rsa::{create_keys, PrivateKey, Public
 #[test]
 fn tiny_example_without_padding() {
     let (priv_key, pub_key) = create_keys(61.into(), 53.into(), 17.into());
-    let ciphertext = RsaEncryption::from(priv_key).encrypt(BigUint::from_bytes(b"a"));
-    assert_eq!(RsaEncryption::from(pub_key).decrypt(ciphertext), BigUint::from_bytes(b"a"));
+    let ciphertext = RsaEncryption::from(priv_key).encrypt(BigUint::from_be_bytes(b"a"));
+    assert_eq!(RsaEncryption::from(pub_key).decrypt(ciphertext), BigUint::from_be_bytes(b"a"));
 }
 
 #[test]
 fn tiny_example_without_padding_but_bigger_primes() {
     let (priv_key, pub_key) = create_keys(190238395574637701.into(), 725918707442996609.into(), 17.into());
-    let ciphertext = RsaEncryption::from(priv_key).encrypt(BigUint::from_bytes(b"a"));
-    assert_eq!(RsaEncryption::from(pub_key).decrypt(ciphertext), BigUint::from_bytes(b"a"));
+    let ciphertext = RsaEncryption::from(priv_key).encrypt(BigUint::from_be_bytes(b"a"));
+    assert_eq!(RsaEncryption::from(pub_key).decrypt(ciphertext), BigUint::from_be_bytes(b"a"));
 }
 
 static EXAMPLE_PRIVATE_KEY: &str = "

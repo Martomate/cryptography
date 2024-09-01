@@ -122,10 +122,9 @@ impl TryFrom<PEM> for PublicKey {
 impl RsaEncryption {
     pub fn encrypt_message(&self, plaintext: &[u8], padding: impl PaddingScheme) -> Vec<u8> {
         let m = padding.encode(b"", plaintext, (self.modulo.bits_used() - 1) as usize / 8 + 1);
-        let m = BigUint::from_bytes(m);
+        let m = BigUint::from_be_bytes(m);
         assert!(m < self.modulo, "the padding scheme did not put a zero as the first byte");
-        let res = self.encrypt(m).as_bytes().to_owned();
-        res
+        self.encrypt(m).to_be_bytes()
     }
 
     pub fn encrypt(&self, m: BigUint) -> BigUint {
@@ -134,10 +133,10 @@ impl RsaEncryption {
 
     pub fn decrypt_message(&self, ciphertext: &[u8], padding: impl PaddingScheme) -> Vec<u8> {
         let mut m: Vec<u8> = iter::repeat(0).take(ciphertext.len()).collect();
-        let d = self.decrypt(BigUint::from_bytes(ciphertext));
-        let dec = d.as_bytes();
+        let d = self.decrypt(BigUint::from_be_bytes(ciphertext));
+        let dec = d.to_be_bytes();
         let start = m.len()-dec.len();
-        m[start..].copy_from_slice(dec);
+        m[start..].copy_from_slice(&dec);
 
         padding
             .decode(
@@ -255,9 +254,9 @@ mod tests {
             mul_mod(
                 &BigUint::from(1 << 91),
                 &BigUint::from(1 << 87),
-                &BigUint::from_bytes(join_u128s([1, 0, 0]).concat()),
+                &BigUint::from_be_bytes(join_u128s([1, 0, 0]).concat()),
             ),
-            BigUint::from_bytes(join_u128s([(1 << (91 + 87 - 128)), 0]).concat())
+            BigUint::from_be_bytes(join_u128s([(1 << (91 + 87 - 128)), 0]).concat())
         );
     }
 
@@ -294,11 +293,11 @@ mod tests {
         // (a << n) * (b << n) mod (m << n << n) = (a * b mod m) << n << n
         assert_eq!(
             mul_mod(
-                &BigUint::from_bytes(join_u128s([a, 0]).concat()),
-                &BigUint::from_bytes(join_u128s([b, 0]).concat()),
-                &BigUint::from_bytes(join_u128s([m, 0, 0]).concat())
+                &BigUint::from_be_bytes(join_u128s([a, 0]).concat()),
+                &BigUint::from_be_bytes(join_u128s([b, 0]).concat()),
+                &BigUint::from_be_bytes(join_u128s([m, 0, 0]).concat())
             ),
-            BigUint::from_bytes(join_u128s([ans, 0, 0]).concat())
+            BigUint::from_be_bytes(join_u128s([ans, 0, 0]).concat())
         );
     }
 

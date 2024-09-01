@@ -1,38 +1,46 @@
 use std::{
-    cmp::Ordering,
-    ops::{Add, Rem, Shl, Shr, Sub},
+    cmp::Ordering, iter, ops::{Add, Rem, Shl, Shr, Sub}
 };
 
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub struct BigUint {
     bytes: Vec<u8>,
-    bits_used: u32,
 }
 
 impl BigUint {
-    pub fn from_bytes<B: AsRef<[u8]>>(bytes: B) -> Self {
-        let bytes: Vec<u8> = bytes
-            .as_ref()
-            .iter()
-            .skip_while(|&&n| n == 0)
-            .cloned()
-            .collect();
+    pub fn from_be_bytes<B: AsRef<[u8]>>(bytes: B) -> Self {
+        let bytes = bytes.as_ref();
+        let Some(num_leading_zeros) = bytes.iter().position(|&n| n != 0) else {
+            return Self::from_u128(0);
+        };
+        let bytes = &bytes[num_leading_zeros..];
 
-        let mut bits_used = 0;
-        if !bytes.is_empty() {
-            bits_used += (bytes.len() - 1) as u32 * 8;
-            bits_used += bytes[0].ilog2() + 1;
+        Self { bytes: bytes.iter().rev().cloned().collect() }
+    }
+    
+    pub fn from_le_bytes<B: AsRef<[u8]>>(bytes: B) -> Self {
+        let mut bytes: Vec<u8> = bytes.as_ref().to_vec();
+
+        while let Some(&b) = bytes.last() {
+            if b != 0 {
+                break;
+            }
+            bytes.pop();
         }
-        Self { bytes, bits_used }
+
+        Self { bytes }
     }
 
     fn from_u128(value: u128) -> Self {
-        let bytes = value.to_be_bytes();
-        let bytes = bytes.into_iter().skip_while(|&n| n == 0).collect();
-        Self {
-            bytes,
-            bits_used: if value == 0 { 0 } else { value.ilog2() + 1 },
+        if value == 0 {
+            return Self {
+                bytes: vec![],
+            };
         }
+
+        let bytes = value.to_le_bytes();
+        let num_bytes = bytes.iter().rposition(|&n| n != 0).unwrap() + 1;
+        Self { bytes: bytes[..num_bytes].to_owned() }
     }
 
     pub fn as_u128(&self) -> Result<u128, String> {
@@ -43,22 +51,30 @@ impl BigUint {
             ));
         }
         let mut bytes = [0; 16];
-        bytes[(16 - self.bytes.len())..].copy_from_slice(&self.bytes);
-        Ok(<u128>::from_be_bytes(bytes))
+        bytes[..self.bytes.len()].copy_from_slice(&self.bytes);
+        Ok(<u128>::from_le_bytes(bytes))
     }
 
     pub fn bits_used(&self) -> u32 {
-        self.bits_used
+        if self.bytes.is_empty() {
+            return 0;
+        }
+
+        let mut bits_used = 0;
+        let last_idx = self.bytes.len() - 1;
+        bits_used += last_idx as u32 * 8;
+        bits_used += self.bytes[last_idx].ilog2() + 1;
+        bits_used
     }
 
     pub fn is_set(&self, idx: u32) -> bool {
-        if idx >= self.bits_used {
+        if idx >= self.bits_used() {
             return false;
         }
         if self.bytes.is_empty() {
             return false;
         }
-        let byte_idx = self.bytes.len() - 1 - (idx / 8) as usize;
+        let byte_idx = (idx / 8) as usize;
         if byte_idx >= self.bytes.len() {
             return false;
         }
@@ -71,7 +87,7 @@ impl BigUint {
         if self.bytes.is_empty() {
             panic!("not enough space");
         }
-        let byte_idx = self.bytes.len() - 1 - (idx / 8) as usize;
+        let byte_idx = (idx / 8) as usize;
         if byte_idx >= self.bytes.len() {
             panic!("not enough space");
         }
@@ -83,8 +99,8 @@ impl BigUint {
         }
     }
 
-    pub fn as_bytes(&self) -> &[u8] {
-        &self.bytes
+    pub fn to_be_bytes(&self) -> Vec<u8> {
+        self.bytes.iter().rev().cloned().collect()
     }
 }
 
@@ -112,27 +128,27 @@ impl Add<&BigUint> for BigUint {
 
             for i in 0..d_len - 1 {
                 let mut sum = 0_u16;
-                sum += dest[d_len - 1 - i] as u16;
+                sum += dest[i] as u16;
                 if i < l_len {
-                    sum += l[l_len - 1 - i] as u16;
+                    sum += l[i] as u16;
                 }
                 if i < r_len {
-                    sum += r[r_len - 1 - i] as u16;
+                    sum += r[i] as u16;
                 }
-                dest[d_len - 1 - i] = (sum & 0xff) as u8;
-                dest[d_len - 2 - i] = ((sum >> 8) & 0xff) as u8;
+                dest[i] = (sum & 0xff) as u8;
+                dest[i+1] = ((sum >> 8) & 0xff) as u8;
             }
         }
 
-        BigUint::from_bytes(dest)
+        BigUint::from_le_bytes(dest)
     }
 }
 
 impl Ord for BigUint {
     fn cmp(&self, other: &Self) -> std::cmp::Ordering {
-        match self.bits_used.cmp(&other.bits_used) {
+        match self.bits_used().cmp(&other.bits_used()) {
             Ordering::Equal => {
-                for i in (0..self.bits_used).rev() {
+                for i in (0..self.bits_used()).rev() {
                     let (a, b) = (self.is_set(i), other.is_set(i));
                     if a && !b {
                         return Ordering::Greater;
@@ -162,19 +178,19 @@ impl Sub<&BigUint> for BigUint {
         let mut inv = Vec::with_capacity(self.bytes.len() + 1);
 
         let offset = inv.capacity() - rhs.bytes.len();
-        for _ in 0..offset {
-            inv.push(!0);
-        }
         for i in 0..rhs.bytes.len() {
             inv.push(!rhs.bytes[i]);
         }
-        let mut res = BigUint::from_bytes(inv) + &BigUint::from_u128(1) + &self;
+        for _ in 0..offset {
+            inv.push(!0);
+        }
+        let mut res = BigUint::from_le_bytes(inv) + &BigUint::from_u128(1) + &self;
 
-        for i in self.bits_used..res.bits_used {
+        for i in self.bits_used()..res.bits_used() {
             res.update(i, false);
         }
 
-        BigUint::from_bytes(res.bytes)
+        BigUint::from_le_bytes(res.bytes)
     }
 }
 
@@ -182,11 +198,11 @@ impl Rem<&BigUint> for BigUint {
     type Output = BigUint;
 
     fn rem(self, rhs: &BigUint) -> BigUint {
-        if rhs.bits_used > self.bits_used {
+        if rhs.bits_used() > self.bits_used() {
             return self;
         }
 
-        let d = self.bits_used - rhs.bits_used;
+        let d = self.bits_used() - rhs.bits_used();
 
         let mut rest = self.clone();
         let mut m = rhs.clone() << d;
@@ -215,16 +231,15 @@ impl Shl<u32> for BigUint {
             // shift the rest first
             let mut result = self.shl(rhs - bits);
 
-            result.bytes.extend((0..steps).map(|_| 0));
-            result.bits_used += bits;
+            result.bytes.splice(0..0, iter::repeat(0).take(steps as usize));
             result
         } else {
             let mut result: Vec<u8> = (0..self.bytes.len() + 1).map(|_| 0).collect();
-            for i in (0..self.bytes.len()).rev() {
-                result[i + 1] |= self.bytes[i] << rhs;
-                result[i] = self.bytes[i] >> (8 - rhs);
+            for i in 0..self.bytes.len() {
+                result[i] |= self.bytes[i] << rhs;
+                result[i + 1] = self.bytes[i] >> (8 - rhs);
             }
-            BigUint::from_bytes(result)
+            BigUint::from_le_bytes(result)
         }
     }
 }
@@ -236,15 +251,25 @@ impl Shr<u32> for BigUint {
         if rhs == 0 {
             return self;
         }
+        if rhs >= 8 {
+            let steps = rhs / 8;
+            let bits = steps * 8;
+
+            // shift the rest first
+            let mut result = self.shr(rhs - bits);
+
+            result.bytes.extend(iter::repeat(0).take(steps as usize));
+            return result
+        }
         let mut result: Vec<u8> = (0..self.bytes.len()).map(|_| 0).collect();
-        for i in 0..self.bytes.len() {
+        for i in (0..self.bytes.len()).rev() {
             result[i] |= self.bytes[i] >> 1;
-            if i < self.bytes.len() - 1 {
-                result[i + 1] = self.bytes[i] << (8 - 1);
+            if i > 0 {
+                result[i - 1] = self.bytes[i] << (8 - 1);
             }
         }
 
-        BigUint::from_bytes(result).shr(rhs - 1)
+        BigUint::from_le_bytes(result).shr(rhs - 1)
     }
 }
 
@@ -254,26 +279,28 @@ mod tests {
 
     #[test]
     fn from_u128() {
+        let a = BigUint::from(0x1234_5678_9012_3456_7890_u128);
         #[rustfmt::skip]
         assert_eq!(
-            BigUint::from(0x1234_5678_9012_3456_7890_u128),
-            BigUint { bytes: vec![
+            a.to_be_bytes(),
+            vec![
                             0x12, 0x34,
                 0x56, 0x78, 0x90, 0x12,
                 0x34, 0x56, 0x78, 0x90,
-            ], bits_used: 10 * 8 - 3 },
+            ],
         );
+        assert_eq!(a.bits_used(), 10 * 8 - 3);
     }
 
     #[test]
     fn to_u128_small_enough() {
         #[rustfmt::skip]
         assert_eq!(
-            BigUint { bytes: vec![
+            BigUint::from_be_bytes([
                             0x12, 0x34,
                 0x56, 0x78, 0x90, 0x12,
                 0x34, 0x56, 0x78, 0x90,
-            ], bits_used: 10 * 8 - 3 }.as_u128(),
+            ]).as_u128(),
             Ok(0x1234_5678_9012_3456_7890_u128),
         );
     }
@@ -282,14 +309,13 @@ mod tests {
     fn to_u128_too_big() {
         #[rustfmt::skip]
         assert_eq!(
-            BigUint { bytes: vec![
+            BigUint::from_be_bytes([
                             0x12, 0x34,
                 0x56, 0x78, 0x90, 0x12,
                 0x34, 0x56, 0x78, 0x90,
                 0x12, 0x34, 0x56, 0x78,
                 0x90, 0x12, 0x34, 0x56,
-            ], bits_used: 18 * 8 - 3 }
-            .as_u128(),
+            ]).as_u128(),
             Err("expected at most 16 bytes, but got 18".to_string()),
         );
     }
@@ -298,16 +324,16 @@ mod tests {
     fn from_bytes_trails_leading_zeros() {
         #[rustfmt::skip]
         assert_eq!(
-            BigUint::from_bytes([
+            BigUint::from_be_bytes([
                 0x00, 0x00, 0x12, 0x34,
                 0x56, 0x78, 0x90, 0x12,
                 0x34, 0x56, 0x78, 0x90,
-            ]),
-            BigUint { bytes: vec![
+            ]).to_be_bytes(),
+            vec![
                             0x12, 0x34,
                 0x56, 0x78, 0x90, 0x12,
                 0x34, 0x56, 0x78, 0x90,
-            ], bits_used: 10 * 8 - 3 },
+            ],
         );
     }
 
@@ -330,28 +356,28 @@ mod tests {
     #[test]
     fn sub_big() {
         assert_eq!(
-            BigUint::from_bytes([13, 12, 11, 10]) - &BigUint::from_bytes([6, 7, 8, 9]),
-            BigUint::from_bytes([7, 5, 3, 1])
+            BigUint::from_be_bytes([13, 12, 11, 10]) - &BigUint::from_be_bytes([6, 7, 8, 9]),
+            BigUint::from_be_bytes([7, 5, 3, 1])
         );
         assert_eq!(
-            BigUint::from_bytes([13, 12, 11, 10]) - &BigUint::from_bytes([7, 8, 9]),
-            BigUint::from_bytes([13, 5, 3, 1])
+            BigUint::from_be_bytes([13, 12, 11, 10]) - &BigUint::from_be_bytes([7, 8, 9]),
+            BigUint::from_be_bytes([13, 5, 3, 1])
         );
         assert_eq!(
-            BigUint::from_bytes([13, 12, 11, 10]) - &BigUint::from_bytes([13, 7, 8, 9]),
-            BigUint::from_bytes([5, 3, 1])
+            BigUint::from_be_bytes([13, 12, 11, 10]) - &BigUint::from_be_bytes([13, 7, 8, 9]),
+            BigUint::from_be_bytes([5, 3, 1])
         );
         assert_eq!(
-            BigUint::from_bytes([13, 12, 11, 10]) - &BigUint::from_bytes([9]),
-            BigUint::from_bytes([13, 12, 11, 1])
+            BigUint::from_be_bytes([13, 12, 11, 10]) - &BigUint::from_be_bytes([9]),
+            BigUint::from_be_bytes([13, 12, 11, 1])
         );
         assert_eq!(
-            BigUint::from_bytes([13, 12, 11, 10]) - &BigUint::from_bytes([13, 12, 11, 10]),
+            BigUint::from_be_bytes([13, 12, 11, 10]) - &BigUint::from_be_bytes([13, 12, 11, 10]),
             BigUint::from_u128(0)
         );
         assert_eq!(
-            BigUint::from_bytes([13, 12, 11, 10]) - &BigUint::from_bytes([11]),
-            BigUint::from_bytes([13, 12, 10, 255])
+            BigUint::from_be_bytes([13, 12, 11, 10]) - &BigUint::from_be_bytes([11]),
+            BigUint::from_be_bytes([13, 12, 10, 255])
         );
     }
 }
