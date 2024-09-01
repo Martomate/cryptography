@@ -57,6 +57,10 @@ where
         encoded_message: &[u8],
         n_len: usize,
     ) -> Result<Vec<u8>, &'static str> {
+        if encoded_message[0] != 0 {
+            return Err("first byte is not 0");
+        }
+
         let label_hash = self.hasher.hash(label).into();
         let masked_seed = &encoded_message[1..(N + 1)];
         let masked_db = &encoded_message[(N + 1)..];
@@ -77,9 +81,6 @@ where
             .ok_or("missing 1-byte before message")?;
         if rest[separator_idx] != 1 {
             return Err("separator is not a 1-byte");
-        }
-        if encoded_message[0] != 0 {
-            return Err("first byte is not 0");
         }
 
         let message = &rest[(separator_idx + 1)..];

@@ -3,6 +3,8 @@ mod mgf;
 mod oaep;
 mod pad;
 
+use std::iter;
+
 use asn1::{PrivateKeyInfo, SubjectPublicKeyInfo};
 use gcd::Gcd;
 
@@ -119,8 +121,11 @@ impl TryFrom<PEM> for PublicKey {
 
 impl RsaEncryption {
     pub fn encrypt_message(&self, plaintext: &[u8], padding: impl PaddingScheme) -> Vec<u8> {
-        let m = padding.encode(b"", plaintext, (self.modulo.bits_used() - 1) as usize / 8);
-        self.encrypt(BigUint::from_bytes(m)).as_bytes().to_owned()
+        let m = padding.encode(b"", plaintext, (self.modulo.bits_used() - 1) as usize / 8 + 1);
+        let m = BigUint::from_bytes(m);
+        assert!(m < self.modulo, "the padding scheme did not put a zero as the first byte");
+        let res = self.encrypt(m).as_bytes().to_owned();
+        res
     }
 
     pub fn encrypt(&self, m: BigUint) -> BigUint {
@@ -128,12 +133,17 @@ impl RsaEncryption {
     }
 
     pub fn decrypt_message(&self, ciphertext: &[u8], padding: impl PaddingScheme) -> Vec<u8> {
-        let m = self.decrypt(BigUint::from_bytes(ciphertext));
+        let mut m: Vec<u8> = iter::repeat(0).take(ciphertext.len()).collect();
+        let d = self.decrypt(BigUint::from_bytes(ciphertext));
+        let dec = d.as_bytes();
+        let start = m.len()-dec.len();
+        m[start..].copy_from_slice(dec);
+
         padding
             .decode(
                 b"",
-                m.as_bytes(),
-                (self.modulo.bits_used() - 1) as usize / 8,
+                &m,
+                m.len(),
             )
             .unwrap()
     }
@@ -376,11 +386,10 @@ mod tests {
                 output.push(message.len() as u8);
             }
 
+            output[0] = 0;
             for (i, &m) in message.iter().enumerate() {
-                output[i] = m;
+                output[i+1] = m;
             }
-
-            dbg!(&output);
 
             output
         }
@@ -393,13 +402,11 @@ mod tests {
         ) -> Result<Vec<u8>, &'static str> {
             let message_len = *encoded_message.last().unwrap() as usize;
 
-            dbg!(&encoded_message);
-
             if message_len > encoded_message.len() {
                 return Err("message too long");
             }
 
-            Ok(encoded_message[0..message_len].to_vec())
+            Ok(encoded_message[1..=message_len].to_vec())
         }
     }
 

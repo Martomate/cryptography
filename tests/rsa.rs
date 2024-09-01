@@ -60,7 +60,6 @@ owIDAQAB
 ";
 
 #[test]
-#[ignore]
 fn example_encrypt_e2e_big() {
     let private_key_pem = PEM::from_str(EXAMPLE_PRIVATE_KEY).unwrap();
     let public_key_pem = PEM::from_str(EXAMPLE_PUBLIC_KEY).unwrap();
