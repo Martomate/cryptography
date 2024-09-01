@@ -121,9 +121,16 @@ impl TryFrom<PEM> for PublicKey {
 
 impl RsaEncryption {
     pub fn encrypt_message(&self, plaintext: &[u8], padding: impl PaddingScheme) -> Vec<u8> {
-        let m = padding.encode(b"", plaintext, (self.modulo.bits_used() - 1) as usize / 8 + 1);
+        let m = padding.encode(
+            b"",
+            plaintext,
+            (self.modulo.bits_used() - 1) as usize / 8 + 1,
+        );
         let m = BigUint::from_be_bytes(m);
-        assert!(m < self.modulo, "the padding scheme did not put a zero as the first byte");
+        assert!(
+            m < self.modulo,
+            "the padding scheme did not put a zero as the first byte"
+        );
         self.encrypt(m).to_be_bytes()
     }
 
@@ -135,16 +142,10 @@ impl RsaEncryption {
         let mut m: Vec<u8> = iter::repeat(0).take(ciphertext.len()).collect();
         let d = self.decrypt(BigUint::from_be_bytes(ciphertext));
         let dec = d.to_be_bytes();
-        let start = m.len()-dec.len();
+        let start = m.len() - dec.len();
         m[start..].copy_from_slice(&dec);
 
-        padding
-            .decode(
-                b"",
-                &m,
-                m.len(),
-            )
-            .unwrap()
+        padding.decode(b"", &m, m.len()).unwrap()
     }
 
     pub fn decrypt(&self, c: BigUint) -> BigUint {
@@ -159,12 +160,12 @@ fn mul_mod(a: &BigUint, b: &BigUint, m: &BigUint) -> BigUint {
 
     while b.bits_used() != 0 {
         if b.is_set(0) {
-            r = r + &a;
-            r = r % m;
+            r += &a;
+            r %= m;
         }
-        a = a << 1;
-        a = a % m;
-        b = b >> 1;
+        a <<= 1;
+        a %= m;
+        b >>= 1;
     }
     r
 }
@@ -387,7 +388,7 @@ mod tests {
 
             output[0] = 0;
             for (i, &m) in message.iter().enumerate() {
-                output[i+1] = m;
+                output[i + 1] = m;
             }
 
             output

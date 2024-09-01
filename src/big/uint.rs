@@ -1,5 +1,7 @@
 use std::{
-    cmp::Ordering, iter, ops::{Add, Rem, Shl, Shr, Sub}
+    cmp::Ordering,
+    iter,
+    ops::{AddAssign, RemAssign, ShlAssign, ShrAssign, Sub, SubAssign},
 };
 
 #[derive(Debug, PartialEq, Eq, Clone)]
@@ -15,9 +17,11 @@ impl BigUint {
         };
         let bytes = &bytes[num_leading_zeros..];
 
-        Self { bytes: bytes.iter().rev().cloned().collect() }
+        Self {
+            bytes: bytes.iter().rev().cloned().collect(),
+        }
     }
-    
+
     pub fn from_le_bytes<B: AsRef<[u8]>>(bytes: B) -> Self {
         let mut bytes: Vec<u8> = bytes.as_ref().to_vec();
 
@@ -33,14 +37,14 @@ impl BigUint {
 
     fn from_u128(value: u128) -> Self {
         if value == 0 {
-            return Self {
-                bytes: vec![],
-            };
+            return Self { bytes: vec![] };
         }
 
         let bytes = value.to_le_bytes();
         let num_bytes = bytes.iter().rposition(|&n| n != 0).unwrap() + 1;
-        Self { bytes: bytes[..num_bytes].to_owned() }
+        Self {
+            bytes: bytes[..num_bytes].to_owned(),
+        }
     }
 
     pub fn as_u128(&self) -> Result<u128, String> {
@@ -65,6 +69,12 @@ impl BigUint {
         bits_used += last_idx as u32 * 8;
         bits_used += self.bytes[last_idx].ilog2() + 1;
         bits_used
+    }
+
+    fn trim_trailing_zeroes(&mut self) {
+        while self.bytes.last().filter(|&a| *a == 0).is_some() {
+            self.bytes.pop();
+        }
     }
 
     pub fn is_set(&self, idx: u32) -> bool {
@@ -110,37 +120,52 @@ impl From<u128> for BigUint {
     }
 }
 
-impl Add<&BigUint> for BigUint {
-    type Output = BigUint;
+impl AddAssign<u8> for BigUint {
+    fn add_assign(&mut self, rhs: u8) {
+        self.bytes.push(0); // in case of overflow
 
-    fn add(self, rhs: &BigUint) -> BigUint {
-        let mut dest: Vec<u8> = (0..(self.bytes.len().max(rhs.bytes.len()) + 1))
-            .map(|_| 0)
-            .collect();
+        let mut carry = rhs as u16;
 
-        {
-            let l = &self.bytes;
-            let r = &rhs.bytes;
-
-            let l_len = l.len();
-            let r_len = r.len();
-            let d_len = dest.len();
-
-            for i in 0..d_len - 1 {
-                let mut sum = 0_u16;
-                sum += dest[i] as u16;
-                if i < l_len {
-                    sum += l[i] as u16;
-                }
-                if i < r_len {
-                    sum += r[i] as u16;
-                }
-                dest[i] = (sum & 0xff) as u8;
-                dest[i+1] = ((sum >> 8) & 0xff) as u8;
+        for b in &mut self.bytes {
+            if carry == 0 {
+                break;
             }
+            let sum = carry + *b as u16;
+            *b = (sum & 0xff) as u8;
+            carry = (sum >> 8) & 0xff;
         }
 
-        BigUint::from_le_bytes(dest)
+        self.trim_trailing_zeroes()
+    }
+}
+
+impl AddAssign<&BigUint> for BigUint {
+    fn add_assign(&mut self, rhs: &BigUint) {
+        while rhs.bytes.len() > self.bytes.len() {
+            self.bytes.push(0);
+        }
+        self.bytes.push(0); // in case of overflow
+
+        let l = &mut self.bytes;
+        let r = &rhs.bytes;
+
+        let l_len = l.len();
+        let r_len = r.len();
+
+        let mut carry = 0_u16;
+
+        for i in 0..l_len - 1 {
+            let mut sum = carry;
+            sum += l[i] as u16;
+            if i < r_len {
+                sum += r[i] as u16;
+            }
+            l[i] = (sum & 0xff) as u8;
+            carry = (sum >> 8) & 0xff;
+        }
+        l[l_len - 1] = carry as u8;
+
+        self.trim_trailing_zeroes()
     }
 }
 
@@ -170,10 +195,10 @@ impl PartialOrd for BigUint {
     }
 }
 
-impl Sub<&BigUint> for BigUint {
-    type Output = BigUint;
+impl SubAssign<&BigUint> for BigUint {
+    fn sub_assign(&mut self, rhs: &BigUint) {
+        let curr_bits_used = self.bits_used();
 
-    fn sub(self, rhs: &BigUint) -> Self::Output {
         // ensure there is enough space for the upcoming addition
         let mut inv = Vec::with_capacity(self.bytes.len() + 1);
 
@@ -184,92 +209,93 @@ impl Sub<&BigUint> for BigUint {
         for _ in 0..offset {
             inv.push(!0);
         }
-        let mut res = BigUint::from_le_bytes(inv) + &BigUint::from_u128(1) + &self;
+        let mut inv = BigUint { bytes: inv };
+        inv.trim_trailing_zeroes();
 
-        for i in self.bits_used()..res.bits_used() {
-            res.update(i, false);
+        *self += 1;
+        *self += &inv;
+
+        for i in curr_bits_used..self.bits_used() {
+            self.update(i, false);
         }
-
-        BigUint::from_le_bytes(res.bytes)
+        self.trim_trailing_zeroes()
     }
 }
 
-impl Rem<&BigUint> for BigUint {
+impl Sub<&BigUint> for BigUint {
     type Output = BigUint;
 
-    fn rem(self, rhs: &BigUint) -> BigUint {
+    fn sub(self, rhs: &BigUint) -> Self::Output {
+        let mut res = self.clone();
+        res -= rhs;
+        res
+    }
+}
+
+impl RemAssign<&BigUint> for BigUint {
+    fn rem_assign(&mut self, rhs: &BigUint) {
         if rhs.bits_used() > self.bits_used() {
-            return self;
+            return;
         }
 
         let d = self.bits_used() - rhs.bits_used();
 
-        let mut rest = self.clone();
-        let mut m = rhs.clone() << d;
+        let mut m = rhs.clone();
+        m <<= d;
+
         for _ in (0..=d).rev() {
-            if m <= rest {
-                rest = rest - &m;
+            if m <= *self {
+                *self -= &m;
             }
-            m = m >> 1;
-        }
-
-        rest
-    }
-}
-
-impl Shl<u32> for BigUint {
-    type Output = BigUint;
-
-    fn shl(self, rhs: u32) -> BigUint {
-        // add whole 0-bytes if possible
-        if rhs == 0 {
-            self
-        } else if rhs >= 8 {
-            let steps = rhs / 8;
-            let bits = steps * 8;
-
-            // shift the rest first
-            let mut result = self.shl(rhs - bits);
-
-            result.bytes.splice(0..0, iter::repeat(0).take(steps as usize));
-            result
-        } else {
-            let mut result: Vec<u8> = (0..self.bytes.len() + 1).map(|_| 0).collect();
-            for i in 0..self.bytes.len() {
-                result[i] |= self.bytes[i] << rhs;
-                result[i + 1] = self.bytes[i] >> (8 - rhs);
-            }
-            BigUint::from_le_bytes(result)
+            m >>= 1;
         }
     }
 }
 
-impl Shr<u32> for BigUint {
-    type Output = BigUint;
+impl ShlAssign<u32> for BigUint {
+    fn shl_assign(&mut self, mut rhs: u32) {
+        let steps = rhs / 8; // save whole bytes for later
+        rhs -= steps * 8;
 
-    fn shr(self, rhs: u32) -> BigUint {
-        if rhs == 0 {
-            return self;
+        if rhs > 0 {
+            self.bytes.push(0); // in case of overflow
+            let mut carry = 0_u8;
+
+            for b in &mut self.bytes {
+                let res = carry | *b << rhs;
+                carry = *b >> (8 - rhs);
+                *b = res;
+            }
+
+            self.trim_trailing_zeroes()
         }
+
+        if steps > 0 {
+            self.bytes
+                .splice(0..0, iter::repeat(0).take(steps as usize));
+        }
+    }
+}
+
+impl ShrAssign<u32> for BigUint {
+    fn shr_assign(&mut self, mut rhs: u32) {
         if rhs >= 8 {
             let steps = rhs / 8;
-            let bits = steps * 8;
 
-            // shift the rest first
-            let mut result = self.shr(rhs - bits);
+            self.bytes.splice(0..steps as usize, []);
 
-            result.bytes.extend(iter::repeat(0).take(steps as usize));
-            return result
+            rhs -= steps * 8;
         }
-        let mut result: Vec<u8> = (0..self.bytes.len()).map(|_| 0).collect();
-        for i in (0..self.bytes.len()).rev() {
-            result[i] |= self.bytes[i] >> 1;
-            if i > 0 {
-                result[i - 1] = self.bytes[i] << (8 - 1);
+
+        if rhs > 0 {
+            let mut carry = 0_u8;
+            for i in (0..self.bytes.len()).rev() {
+                let res = carry | (self.bytes[i] >> rhs);
+                carry = self.bytes[i] << (8 - rhs);
+                self.bytes[i] = res;
             }
+            self.trim_trailing_zeroes();
         }
-
-        BigUint::from_le_bytes(result).shr(rhs - 1)
     }
 }
 
