@@ -5,6 +5,15 @@ pub mod pem;
 pub mod rsa;
 pub mod sha;
 
+mod md {
+    pub mod md2;
+    
+    #[cfg(test)]
+    mod tests;
+}
+
+pub use md::md2::md2 as md2;
+
 trait HashFunction: Clone {
     type Output;
 
