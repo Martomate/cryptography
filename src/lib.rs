@@ -14,7 +14,7 @@ mod md {
     mod tests;
 }
 
-pub use md::md2::md2 as md2;
+pub use md::md2::hash as md2;
 pub use md::md4::md4 as md4;
 pub use md::md5::md5 as md5;
 
