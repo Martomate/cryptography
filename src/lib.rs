@@ -7,12 +7,14 @@ pub mod sha;
 
 mod md {
     pub mod md2;
+    pub mod md4;
     
     #[cfg(test)]
     mod tests;
 }
 
 pub use md::md2::md2 as md2;
+pub use md::md4::md4 as md4;
 
 trait HashFunction: Clone {
     type Output;
