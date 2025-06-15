@@ -1,4 +1,4 @@
-pub fn md5(data: &[u8]) -> [u8; 16] {
+pub fn hash(data: &[u8]) -> [u8; 16] {
     let a = data.len() % 64;
     let num_pad_bytes = if a == 56 { 64 } else { (64 + 56 - a) % 64 };
 

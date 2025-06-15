@@ -1,6 +1,6 @@
 use crate::md::md2;
-use crate::md::md4::*;
-use crate::md::md5::*;
+use crate::md::md4;
+use crate::md::md5;
 
 fn check_hash<'a>(hash_fn: impl FnOnce(&'a [u8]) -> [u8; 16], input: &'a [u8], expected_hash: u128) {
     let expected_hash = expected_hash.to_be_bytes();
@@ -24,15 +24,15 @@ fn md2_examples() {
 
 #[test]
 fn md4_examples() {
-    check_hash(md4, b"", 0x_31d6cfe0d16ae931b73c59d7e0c089c0_u128);
-    check_hash(md4, b"a", 0x_bde52cb31de33e46245e05fbdbd6fb24_u128);
+    check_hash(md4::hash, b"", 0x_31d6cfe0d16ae931b73c59d7e0c089c0_u128);
+    check_hash(md4::hash, b"a", 0x_bde52cb31de33e46245e05fbdbd6fb24_u128);
     check_hash(
-        md4,
+        md4::hash,
         b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789",
         0x_043f8582f241db351ce627e153e7f0e4_u128,
     );
     check_hash(
-        md4,
+        md4::hash,
         b"12345678901234567890123456789012345678901234567890123456789012345678901234567890",
         0x_e33b4ddc9c38f2199c3e7b164fcc0536_u128,
     );
@@ -40,15 +40,15 @@ fn md4_examples() {
 
 #[test]
 fn md5_examples() {
-    check_hash(md5, b"", 0x_d41d8cd98f00b204e9800998ecf8427e_u128);
-    check_hash(md5, b"a", 0x_0cc175b9c0f1b6a831c399e269772661_u128);
+    check_hash(md5::hash, b"", 0x_d41d8cd98f00b204e9800998ecf8427e_u128);
+    check_hash(md5::hash, b"a", 0x_0cc175b9c0f1b6a831c399e269772661_u128);
     check_hash(
-        md5,
+        md5::hash,
         b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789",
         0x_d174ab98d277d9f5a5611c2c9f419d9f_u128,
     );
     check_hash(
-        md5,
+        md5::hash,
         b"12345678901234567890123456789012345678901234567890123456789012345678901234567890",
         0x_57edf4a22be3c955ac49da2e2107b67a_u128,
     );

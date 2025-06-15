@@ -15,8 +15,8 @@ mod md {
 }
 
 pub use md::md2::hash as md2;
-pub use md::md4::md4 as md4;
-pub use md::md5::md5 as md5;
+pub use md::md4::hash as md4;
+pub use md::md5::hash as md5;
 
 trait HashFunction: Clone {
     type Output;
