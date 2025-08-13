@@ -10,10 +10,15 @@ mod md {
     pub mod md4;
     pub mod md5;
 }
+mod rc {
+    pub mod rc2;
+}
 
 pub use md::md2::hash as md2;
 pub use md::md4::hash as md4;
 pub use md::md5::hash as md5;
+
+pub use rc::rc2::RC2 as rc2;
 
 trait HashFunction: Clone {
     type Output;
@@ -60,11 +65,12 @@ impl BlockEncryption {
         M: BlockCipherMode<N>,
     {
         let blocks = plaintext.chunks_exact(N);
-
+        
         let last_part = blocks.remainder();
         let last_block = pad::PkcsPadding.pad(last_part);
-
+        
         for block in blocks {
+            println!("Encrypting: {:?}", block);
             let block = <[u8; N]>::try_from(block).unwrap();
             let output_block = mode.encrypt_block(&cipher, block);
             for b in output_block {
@@ -72,6 +78,7 @@ impl BlockEncryption {
             }
         }
 
+        println!("Finally encrypting: {:?}", last_block);
         let output_block = mode.encrypt_block(&cipher, last_block);
         for b in output_block {
             output(b);
