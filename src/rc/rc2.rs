@@ -46,37 +46,33 @@ impl RC2 {
     }
 
     fn expand_key(key: &[u8], num_bits: u16) -> [u16; 64] {
-        let mut L = [0; 128];
-        L[..key.len()].copy_from_slice(key);
+        let mut l = [0; 128];
+        l[..key.len()].copy_from_slice(key);
 
-        let T = key.len();
-        let T1 = num_bits;
-        let T8 = T1.div_ceil(8);
-        let TM = ((1 << (8 + T1 - 8 * T8)) - 1) as u8;
-        let TM = 0xff_u8 >> (T1.wrapping_neg() & 7);
+        let t = key.len();
+        let t1 = num_bits;
+        let t8 = t1.div_ceil(8);
+        let tm = 0xff_u8 >> (t1.wrapping_neg() & 7);
 
-        for i in T..128 {
-            L[i] = PITABLE[L[i - 1].wrapping_add(L[i - T]) as usize]
+        for i in t..128 {
+            l[i] = PITABLE[l[i - 1].wrapping_add(l[i - t]) as usize]
         }
-        L[(128 - T8) as usize] = PITABLE[(L[(128 - T8) as usize] & TM) as usize];
+        l[(128 - t8) as usize] = PITABLE[(l[(128 - t8) as usize] & tm) as usize];
 
-        for i in (0..(128 - T8)).rev() {
-            L[i as usize] = PITABLE[(L[(i + 1) as usize] ^ L[(i + T8) as usize]) as usize];
+        for i in (0..(128 - t8)).rev() {
+            l[i as usize] = PITABLE[(l[(i + 1) as usize] ^ l[(i + t8) as usize]) as usize];
         }
 
-        let mut K = [0_u16; 64];
+        let mut k = [0_u16; 64];
         for i in 0..64 {
-            K[i] = u16::from_le_bytes([L[i * 2], L[i * 2 + 1]]);
+            k[i] = u16::from_le_bytes([l[i * 2], l[i * 2 + 1]]);
         }
-        K
+        k
     }
 
     fn encrypt_block(&self, mut data: [u16; 4]) -> [u16; 4] {
-        let mut keys = &self.key[..];
-
         for i in 0..16 {
-            self.mix(&mut data, &keys[..4]);
-            keys = &keys[4..];
+            self.mix(&mut data, &self.key[(4*i)..]);
 
             if i == 4 || i == 10 {
                 self.mash(&mut data);
@@ -86,8 +82,16 @@ impl RC2 {
         data
     }
 
-    fn decrypt_block(&self, data: [u16; 4]) -> [u16; 4] {
-        todo!()
+    fn decrypt_block(&self, mut data: [u16; 4]) -> [u16; 4] {
+        for i in (0..16).rev() {
+            if i == 4 || i == 10 {
+                self.rmash(&mut data);
+            }
+
+            self.rmix(&mut data, &self.key[(4*i)..]);
+        }
+
+        data
     }
 
     fn mix(&self, data: &mut [u16; 4], keys: &[u16]) {
@@ -100,9 +104,24 @@ impl RC2 {
         }
     }
 
+    fn rmix(&self, data: &mut [u16; 4], keys: &[u16]) {
+        for (i, s) in [1, 2, 3, 5].into_iter().enumerate().rev() {
+            data[i] = data[i].rotate_right(s)
+                .wrapping_sub(keys[i])
+                .wrapping_sub(data[(i + 3) % 4] & data[(i + 2) % 4])
+                .wrapping_sub(!data[(i + 3) % 4] & data[(i + 1) % 4]);
+        }
+    }
+
     fn mash(&self, data: &mut [u16; 4]) {
         for i in 0..4 {
             data[i] = data[i].wrapping_add(self.key[(data[(i + 3) % 4] & 63) as usize]);
+        }
+    }
+    
+    fn rmash(&self, data: &mut [u16; 4]) {
+        for i in (0..4).rev() {
+            data[i] = data[i].wrapping_sub(self.key[(data[(i + 3) % 4] & 63) as usize]);
         }
     }
 }
@@ -137,67 +156,81 @@ impl crate::BlockCipher<8> for RC2 {
 
 #[cfg(test)]
 mod tests {
-    use crate::BlockCipher;
+    use crate::{Block, BlockCipher};
 
     use super::RC2 as rc2;
+
+    fn check(cipher: rc2, plaintext: Block<8>, ciphertext: Block<8>) {
+        assert_eq!(cipher.encrypt(plaintext), ciphertext);
+        assert_eq!(cipher.decrypt(ciphertext), plaintext);
+    }
 
     #[test]
     fn rc2_examples() {
         let key = 0x0000000000000000_u64.to_be_bytes();
-        assert_eq!(
-            rc2::from_key(&key, 63).encrypt(0x0000000000000000_u64.to_be_bytes()),
-            0xebb773f993278eff_u64.to_be_bytes()
+        check(
+            rc2::from_key(&key, 63),
+            0x0000000000000000_u64.to_be_bytes(),
+            0xebb773f993278eff_u64.to_be_bytes(),
         );
-        
+
         let key = 0x0000000000000000_u64.to_be_bytes();
-        assert_eq!(
-            rc2::from_key(&key, 128).encrypt(0x0000000000000000_u64.to_be_bytes()),
-            0x81b4ce4e4714989f_u64.to_be_bytes()
+        check(
+            rc2::from_key(&key, 128),
+            0x0000000000000000_u64.to_be_bytes(),
+            0x81b4ce4e4714989f_u64.to_be_bytes(),
         );
 
         let key = 0xffffffffffffffff_u64.to_be_bytes();
-        assert_eq!(
-            rc2::from_key(&key, 64).encrypt(0xffffffffffffffff_u64.to_be_bytes()),
-            0x278b27e42e2f0d49_u64.to_be_bytes()
+        check(
+            rc2::from_key(&key, 64),
+            0xffffffffffffffff_u64.to_be_bytes(),
+            0x278b27e42e2f0d49_u64.to_be_bytes(),
         );
 
         let key = 0x3000000000000000_u64.to_be_bytes();
-        assert_eq!(
-            rc2::from_key(&key, 64).encrypt(0x1000000000000001_u64.to_be_bytes()),
-            0x30649edf9be7d2c2_u64.to_be_bytes()
+        check(
+            rc2::from_key(&key, 64),
+            0x1000000000000001_u64.to_be_bytes(),
+            0x30649edf9be7d2c2_u64.to_be_bytes(),
         );
 
         let key = [0x88];
-        assert_eq!(
-            rc2::from_key(&key, 64).encrypt(0x0000000000000000_u64.to_be_bytes()),
-            0x61a8a244adacccf0_u64.to_be_bytes()
+        check(
+            rc2::from_key(&key, 64),
+            0x0000000000000000_u64.to_be_bytes(),
+            0x61a8a244adacccf0_u64.to_be_bytes(),
         );
 
         let key = &0x88bca90e90875a00_u64.to_be_bytes()[..7];
-        assert_eq!(
-            rc2::from_key(key, 64).encrypt(0x0000000000000000_u64.to_be_bytes()),
-            0x6ccf4308974c267f_u64.to_be_bytes()
+        check(
+            rc2::from_key(key, 64),
+            0x0000000000000000_u64.to_be_bytes(),
+            0x6ccf4308974c267f_u64.to_be_bytes(),
         );
 
         let key = 0x88bca90e90875a7f0f79c384627bafb2_u128.to_be_bytes();
-        assert_eq!(
-            rc2::from_key(&key, 64).encrypt(0x0000000000000000_u64.to_be_bytes()),
-            0x1a807d272bbe5db1_u64.to_be_bytes()
+        check(
+            rc2::from_key(&key, 64),
+            0x0000000000000000_u64.to_be_bytes(),
+            0x1a807d272bbe5db1_u64.to_be_bytes(),
         );
 
         let key = 0x88bca90e90875a7f0f79c384627bafb2_u128.to_be_bytes();
-        assert_eq!(
-            rc2::from_key(&key, 128).encrypt(0x0000000000000000_u64.to_be_bytes()),
-            0x2269552ab0f85ca6_u64.to_be_bytes()
+        check(
+            rc2::from_key(&key, 128),
+            0x0000000000000000_u64.to_be_bytes(),
+            0x2269552ab0f85ca6_u64.to_be_bytes(),
         );
 
         let mut key = [0; 33];
         key[0..16].copy_from_slice(&0x88bca90e90875a7f0f79c384627bafb2_u128.to_be_bytes());
         key[16..32].copy_from_slice(&0x16f80a6f85920584c42fceb0be255daf_u128.to_be_bytes());
         key[32] = 0x1e;
-        assert_eq!(
-            rc2::from_key(&key, 129).encrypt(0x0000000000000000_u64.to_be_bytes()),
-            0x5b78d3a43dfff1f1_u64.to_be_bytes()
+        check(
+            rc2::from_key(&key, 129),
+            0x0000000000000000_u64.to_be_bytes(),
+            0x5b78d3a43dfff1f1_u64.to_be_bytes(),
         );
     }
 }
