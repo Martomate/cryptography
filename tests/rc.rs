@@ -1,4 +1,4 @@
-use cryptography::{rc2, BlockEncryption, EcbMode};
+use cryptography::{rc2, rc4, BlockEncryption, EcbMode};
 
 #[test]
 fn rc2_ecb_examples_80() {
@@ -48,4 +48,21 @@ fn rc2_ecb_examples_128() {
             0xF4, 0x26, 0xE8, 0xA0, 0x90, 0xE7, 0x5D, 0x07, //
         ]
     );
+}
+
+#[test]
+fn rc4_examples() {
+    fn check(key: &[u8], plaintext: &[u8], expected_ciphertext_hex: &str) {
+        let expected_ciphertext = hex::decode(expected_ciphertext_hex).unwrap();
+        
+        let ciphertext = rc4::new(key).encrypt(plaintext);
+        assert_eq!(ciphertext, expected_ciphertext);
+
+        let decrypted = rc4::new(key).decrypt(&ciphertext);
+        assert_eq!(decrypted, plaintext);
+    }
+
+    check(b"Key", b"Plaintext", "BBF316E8D940AF0AD3");
+    check(b"Wiki", b"pedia", "1021BF0420");
+    check(b"Secret", b"Attack at dawn", "45A01F645FC35B383552544B9BF5");
 }

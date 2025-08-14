@@ -12,6 +12,7 @@ mod md {
 }
 mod rc {
     pub mod rc2;
+    pub mod rc4;
 }
 
 pub use md::md2::hash as md2;
@@ -19,6 +20,7 @@ pub use md::md4::hash as md4;
 pub use md::md5::hash as md5;
 
 pub use rc::rc2::RC2 as rc2;
+pub use rc::rc4::KeyStream as rc4;
 
 trait HashFunction: Clone {
     type Output;
@@ -65,12 +67,11 @@ impl BlockEncryption {
         M: BlockCipherMode<N>,
     {
         let blocks = plaintext.chunks_exact(N);
-        
+
         let last_part = blocks.remainder();
         let last_block = pad::PkcsPadding.pad(last_part);
-        
+
         for block in blocks {
-            println!("Encrypting: {:?}", block);
             let block = <[u8; N]>::try_from(block).unwrap();
             let output_block = mode.encrypt_block(&cipher, block);
             for b in output_block {
@@ -78,7 +79,6 @@ impl BlockEncryption {
             }
         }
 
-        println!("Finally encrypting: {:?}", last_block);
         let output_block = mode.encrypt_block(&cipher, last_block);
         for b in output_block {
             output(b);
@@ -118,6 +118,22 @@ impl BlockEncryption {
         for &b in &next_output[..last_block_len] {
             output(b);
         }
+    }
+}
+
+pub struct StreamCipher<K: Iterator<Item = u8>> {
+    keys: K,
+}
+
+impl<K: Iterator<Item = u8>> StreamCipher<K> {
+    pub fn new(keys: impl IntoIterator<IntoIter = K>) -> Self {
+        Self {
+            keys: keys.into_iter(),
+        }
+    }
+
+    pub fn encrypt<'a>(&'a mut self, data: impl IntoIterator<Item = u8> + 'a) -> impl Iterator<Item = u8> + 'a {
+        data.into_iter().map(|d| self.keys.next().unwrap() ^ d)
     }
 }
 
