@@ -13,6 +13,7 @@ mod md {
 mod rc {
     pub mod rc2;
     pub mod rc4;
+    pub mod rc5;
 }
 
 pub use md::md2::hash as md2;
@@ -21,6 +22,7 @@ pub use md::md5::hash as md5;
 
 pub use rc::rc2::RC2 as rc2;
 pub use rc::rc4::KeyStream as rc4;
+pub use rc::rc5::RC5 as rc5;
 
 trait HashFunction: Clone {
     type Output;

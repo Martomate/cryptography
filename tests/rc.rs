@@ -1,68 +1,86 @@
-use cryptography::{rc2, rc4, BlockEncryption, EcbMode};
+use cryptography::{rc2, rc4, rc5, BlockEncryption, EcbMode};
+
+macro_rules! check_block_cipher {
+    ($make_cipher: expr, $plaintext: expr, $ciphertext: expr,) => {{
+        let make_cipher = $make_cipher;
+        let plaintext = $plaintext;
+        let ciphertext = $ciphertext;
+
+        let mut output = Vec::new();
+        BlockEncryption::encrypt(make_cipher(), EcbMode, plaintext, |b| output.push(b));
+        assert_eq!(&output, ciphertext);
+
+        let mut output = Vec::new();
+        BlockEncryption::decrypt(make_cipher(), EcbMode, ciphertext, |b| output.push(b));
+        assert_eq!(&output, plaintext);
+    }};
+}
 
 #[test]
 fn rc2_ecb_examples_80() {
-    let mut output = Vec::new();
-    BlockEncryption::encrypt(
-        rc2::from_key(
-            &[0x26, 0x1E, 0x57, 0x8E, 0xC9, 0x62, 0xBF, 0xB8, 0x3E, 0x96],
-            80,
-        ),
-        EcbMode,
+    let key = [0x26, 0x1E, 0x57, 0x8E, 0xC9, 0x62, 0xBF, 0xB8, 0x3E, 0x96];
+
+    check_block_cipher!(
+        || rc2::from_key(&key, 80),
         &[
             0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0x77, 0x88, //
             0x99, 0xAA, 0xBB, 0xCC, 0xDD, 0xEE, 0xFF, 0x00, //
         ],
-        |b| output.push(b),
-    );
-    assert_eq!(
-        &output,
         &[
             0xF9, 0x9A, 0x3A, 0xDB, 0x00, 0x3B, 0x7A, 0xEB, //
             0x81, 0xE3, 0x6B, 0xA9, 0xE5, 0x37, 0x10, 0xD1, //
             0xFC, 0x68, 0x98, 0x27, 0x2E, 0xCA, 0xA1, 0xA1, //
-        ]
-    );
+        ],
+    )
 }
 
 #[test]
 fn rc2_ecb_examples_128() {
-    let mut output = Vec::new();
-    BlockEncryption::encrypt(
-        rc2::from_key(
-            &[0x26, 0x1E, 0x57, 0x8E, 0xC9, 0x62, 0xBF, 0xB8, 0x3E, 0x96],
-            128,
-        ),
-        EcbMode,
+    let key = [0x26, 0x1E, 0x57, 0x8E, 0xC9, 0x62, 0xBF, 0xB8, 0x3E, 0x96];
+
+    check_block_cipher!(
+        || rc2::from_key(&key, 128),
         &[
             0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0x77, 0x88, //
             0x99, 0xAA, 0xBB, 0xCC, 0xDD, 0xEE, 0xFF, 0x00, //
         ],
-        |b| output.push(b),
-    );
-    assert_eq!(
-        &output,
         &[
             0x0A, 0xD2, 0x1F, 0xAD, 0x6C, 0xA1, 0x86, 0xBD, //
             0xEB, 0xDD, 0x07, 0x27, 0x75, 0x87, 0xDC, 0x5E, //
             0xF4, 0x26, 0xE8, 0xA0, 0x90, 0xE7, 0x5D, 0x07, //
-        ]
+        ],
     );
 }
 
 #[test]
 fn rc4_examples() {
-    fn check(key: &[u8], plaintext: &[u8], expected_ciphertext_hex: &str) {
-        let expected_ciphertext = hex::decode(expected_ciphertext_hex).unwrap();
-        
-        let ciphertext = rc4::new(key).encrypt(plaintext);
-        assert_eq!(ciphertext, expected_ciphertext);
+    fn check(key: &[u8], plaintext: &[u8], ciphertext_hex: &str) {
+        let ciphertext = hex::decode(ciphertext_hex).unwrap();
+        let ciphertext = ciphertext.as_ref();
 
-        let decrypted = rc4::new(key).decrypt(&ciphertext);
-        assert_eq!(decrypted, plaintext);
+        assert_eq!(rc4::new(key).encrypt(plaintext), ciphertext);
+        assert_eq!(rc4::new(key).decrypt(ciphertext), plaintext);
     }
 
     check(b"Key", b"Plaintext", "BBF316E8D940AF0AD3");
     check(b"Wiki", b"pedia", "1021BF0420");
     check(b"Secret", b"Attack at dawn", "45A01F645FC35B383552544B9BF5");
+}
+
+#[test]
+fn rc5_ecb_examples() {
+    let key = [
+        0x91, 0x5F, 0x46, 0x19, 0xBE, 0x41, 0xB2, 0x51, //
+        0x63, 0x55, 0xA5, 0x01, 0x10, 0xA9, 0xCE, 0x91, //
+    ];
+    check_block_cipher!(
+        || rc5::new(&key, 12),
+        &[
+            0x21, 0xA5, 0xDB, 0xEE, 0x15, 0x4B, 0x8F, 0x6D, //
+        ],
+        &[
+            0xF7, 0xC0, 0x13, 0xAC, 0x5B, 0x2B, 0x89, 0x52, //
+            0xd2, 0x54, 0x95, 0x47, 0x5f, 0xf1, 0x84, 0x8a, //
+        ],
+    );
 }
