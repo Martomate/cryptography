@@ -62,6 +62,7 @@ mod tests {
 
     #[test]
     fn rc4_keys() {
+        #[track_caller]
         fn check(key: &[u8], expected_key_stream_hex: &str) {
             let expected_key_stream = hex::decode(expected_key_stream_hex).unwrap();
             let key_stream = KeyStream::new(key)

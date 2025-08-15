@@ -2,6 +2,7 @@ use cryptography::md2;
 use cryptography::md4;
 use cryptography::md5;
 
+#[track_caller]
 fn check_hash<'a>(hash_fn: impl FnOnce(&'a [u8]) -> [u8; 16], input: &'a [u8], expected_hash: u128) {
     let expected_hash = expected_hash.to_be_bytes();
     assert_eq!(hash_fn(input), expected_hash, "input = {:?}", input);

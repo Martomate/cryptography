@@ -1,26 +1,21 @@
-use cryptography::{rc2, rc4, rc5, BlockEncryption, EcbMode};
+use cryptography::{rc2, rc4, rc5, BlockCipher, BlockEncryption, EcbMode};
 
-macro_rules! check_block_cipher {
-    ($make_cipher: expr, $plaintext: expr, $ciphertext: expr,) => {{
-        let make_cipher = $make_cipher;
-        let plaintext = $plaintext;
-        let ciphertext = $ciphertext;
+#[track_caller]
+fn check_block_cipher<const N: usize, C: BlockCipher<N>>(make_cipher: impl Fn() -> C, plaintext: &[u8], ciphertext: &[u8]) {
+    let mut output = Vec::new();
+    BlockEncryption::encrypt(make_cipher(), EcbMode, plaintext, |b| output.push(b));
+    assert_eq!(&output, ciphertext);
 
-        let mut output = Vec::new();
-        BlockEncryption::encrypt(make_cipher(), EcbMode, plaintext, |b| output.push(b));
-        assert_eq!(&output, ciphertext);
-
-        let mut output = Vec::new();
-        BlockEncryption::decrypt(make_cipher(), EcbMode, ciphertext, |b| output.push(b));
-        assert_eq!(&output, plaintext);
-    }};
+    let mut output = Vec::new();
+    BlockEncryption::decrypt(make_cipher(), EcbMode, ciphertext, |b| output.push(b));
+    assert_eq!(&output, plaintext);
 }
 
 #[test]
 fn rc2_ecb_examples_80() {
     let key = [0x26, 0x1E, 0x57, 0x8E, 0xC9, 0x62, 0xBF, 0xB8, 0x3E, 0x96];
 
-    check_block_cipher!(
+    check_block_cipher(
         || rc2::from_key(&key, 80),
         &[
             0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0x77, 0x88, //
@@ -38,7 +33,7 @@ fn rc2_ecb_examples_80() {
 fn rc2_ecb_examples_128() {
     let key = [0x26, 0x1E, 0x57, 0x8E, 0xC9, 0x62, 0xBF, 0xB8, 0x3E, 0x96];
 
-    check_block_cipher!(
+    check_block_cipher(
         || rc2::from_key(&key, 128),
         &[
             0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0x77, 0x88, //
@@ -54,6 +49,7 @@ fn rc2_ecb_examples_128() {
 
 #[test]
 fn rc4_examples() {
+    #[track_caller]
     fn check(key: &[u8], plaintext: &[u8], ciphertext_hex: &str) {
         let ciphertext = hex::decode(ciphertext_hex).unwrap();
         let ciphertext = ciphertext.as_ref();
@@ -73,7 +69,7 @@ fn rc5_ecb_examples() {
         0x91, 0x5F, 0x46, 0x19, 0xBE, 0x41, 0xB2, 0x51, //
         0x63, 0x55, 0xA5, 0x01, 0x10, 0xA9, 0xCE, 0x91, //
     ];
-    check_block_cipher!(
+    check_block_cipher(
         || rc5::new(&key, 12),
         &[
             0x21, 0xA5, 0xDB, 0xEE, 0x15, 0x4B, 0x8F, 0x6D, //
