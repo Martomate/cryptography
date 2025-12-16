@@ -23,7 +23,7 @@ fn process_chunk(hash: &mut [u32; 5], chunk: [u8; 64]) {
         w[i] = (w[i - 3] ^ w[i - 8] ^ w[i - 14] ^ w[i - 16]).rotate_left(1);
     }
 
-    let [mut a, mut b, mut c, mut d, mut e] = hash; // this will copy
+    let [mut a, mut b, mut c, mut d, mut e] = *hash; // this will copy
 
     for (i, &w) in w.iter().enumerate() {
         let (k, f) = match i {

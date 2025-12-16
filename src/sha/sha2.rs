@@ -199,7 +199,7 @@ fn process_chunk(hash: &mut [u32; 8], chunk: [u8; 64]) {
             .wrapping_add(s1);
     }
 
-    let [mut a, mut b, mut c, mut d, mut e, mut f, mut g, mut h] = hash; // this will copy
+    let [mut a, mut b, mut c, mut d, mut e, mut f, mut g, mut h] = *hash; // this will copy
 
     for i in 0..64 {
         let s1 = e.rotate_right(6) ^ e.rotate_right(11) ^ e.rotate_right(25);
@@ -252,7 +252,7 @@ fn process_big_chunk(hash: &mut [u64; 8], chunk: [u8; 128]) {
             .wrapping_add(s1);
     }
 
-    let [mut a, mut b, mut c, mut d, mut e, mut f, mut g, mut h] = hash; // this will copy
+    let [mut a, mut b, mut c, mut d, mut e, mut f, mut g, mut h] = *hash; // this will copy
 
     for i in 0..80 {
         let s1 = e.rotate_right(14) ^ e.rotate_right(18) ^ e.rotate_right(41);
