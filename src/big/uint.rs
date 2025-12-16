@@ -1,6 +1,5 @@
 use std::{
     cmp::Ordering,
-    iter,
     ops::{AddAssign, RemAssign, ShlAssign, ShrAssign, Sub, SubAssign},
 };
 
@@ -272,7 +271,7 @@ impl ShlAssign<u32> for BigUint {
 
         if steps > 0 {
             self.bytes
-                .splice(0..0, iter::repeat(0).take(steps as usize));
+                .splice(0..0, std::iter::repeat_n(0, steps as usize));
         }
     }
 }

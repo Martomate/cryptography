@@ -47,14 +47,13 @@ impl Hasher {
         let chunk = <[u8; 16]>::try_from(&self.chunk[0..16]).unwrap();
         self.chunk.clear();
 
-        for j in 0..16 {
-            let c = chunk[j];
+        for (j, &c) in chunk.iter().enumerate() {
             self.checksum[j] ^= S[(c ^ self.l) as usize];
             self.l = self.checksum[j];
         }
 
-        for j in 0..16 {
-            self.x[j + 16] = chunk[j];
+        for (j, &c) in chunk.iter().enumerate() {
+            self.x[j + 16] = c;
             self.x[j + 32] = self.x[j + 16] ^ self.x[j];
         }
 

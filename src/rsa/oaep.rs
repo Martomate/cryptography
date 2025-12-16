@@ -31,7 +31,7 @@ where
         // data block
         let mut db = Vec::with_capacity(n_len - N - 1);
         db.extend_from_slice(&label_hash);
-        db.extend(std::iter::repeat(0).take(ps_len));
+        db.extend(std::iter::repeat_n(0, ps_len));
         db.push(1);
         db.extend_from_slice(message);
 

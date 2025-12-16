@@ -3,8 +3,6 @@ mod mgf;
 mod oaep;
 mod pad;
 
-use std::iter;
-
 use asn1::{PrivateKeyInfo, SubjectPublicKeyInfo};
 use gcd::Gcd;
 
@@ -139,7 +137,7 @@ impl RsaEncryption {
     }
 
     pub fn decrypt_message(&self, ciphertext: &[u8], padding: impl PaddingScheme) -> Vec<u8> {
-        let mut m: Vec<u8> = iter::repeat(0).take(ciphertext.len()).collect();
+        let mut m: Vec<u8> = std::iter::repeat_n(0, ciphertext.len()).collect();
         let d = self.decrypt(BigUint::from_be_bytes(ciphertext));
         let dec = d.to_be_bytes();
         let start = m.len() - dec.len();
